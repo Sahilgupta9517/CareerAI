@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 33% 99%;
+    --foreground: 224 47% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 47% 12%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 226 60% 97%;
+    --secondary-foreground: 224 47% 16%;
+    --muted: 220 20% 96%;
+    --muted-foreground: 220 12% 46%;
+    --accent: 258 90% 66%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 64% 40%;
+    --success-foreground: 0 0% 100%;
+    --border: 220 20% 91%;
+    --input: 220 20% 91%;
+    --ring: 243 75% 59%;
+    --radius: 0.85rem;
+  }
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  h1, h2, h3, h4 { @apply tracking-[-0.02em]; }
+}
+
+@layer utilities {
+  .text-gradient { @apply bg-brand-gradient bg-clip-text text-transparent; }
+  .glass { @apply bg-white/70 backdrop-blur-xl; }
+  .grid-bg {
+    background-image: radial-gradient(circle at 1px 1px, rgba(99,102,241,.14) 1px, transparent 0);
+    background-size: 28px 28px;
+  }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: hsl(220 14% 88%); border-radius: 999px; border: 3px solid white; }
+::-webkit-scrollbar-thumb:hover { background: hsl(220 14% 80%); }
