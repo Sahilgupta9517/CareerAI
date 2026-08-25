@@ -8,9 +8,10 @@ const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HT
       <select
         ref={ref}
         className={cn(
-          'h-11 w-full appearance-none rounded-xl border border-input bg-white px-4 pr-10 text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-primary/50 focus-visible:ring-4 focus-visible:ring-primary/10',
+          'h-11 w-full appearance-none rounded-xl border bg-input px-4 pr-10 text-sm text-foreground shadow-sm transition-all focus-visible:outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/20',
           className,
         )}
+        style={{ borderColor: 'rgba(148,163,184,0.18)' }}
         {...props}
       >
         {children}

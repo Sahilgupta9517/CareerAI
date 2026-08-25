@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowRight,
@@ -781,10 +781,10 @@ setAiResult(cleanedResult)
 
       <Card
         className={cn(
-          'flex flex-col items-center justify-center border-2 border-dashed bg-white px-6 py-12 text-center transition-colors',
+          'flex flex-col items-center justify-center border-2 border-dashed px-6 py-12 text-center transition-all duration-200',
           dragging
-            ? 'border-primary bg-primary/5'
-            : 'border-border hover:border-primary/40',
+            ? 'border-primary bg-primary/10 shadow-glow-cyan'
+            : 'border-border/60 bg-muted/5 hover:border-primary/40 hover:bg-muted/10',
         )}
         onDragOver={(event) => {
           event.preventDefault()
@@ -849,7 +849,7 @@ setAiResult(cleanedResult)
       {errorMessage ? (
         <div
           role="alert"
-          className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+          className="flex items-start gap-3 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-300"
         >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 
@@ -918,7 +918,7 @@ setAiResult(cleanedResult)
           ) : null}
 
           {ready ? (
-            <div className="mt-4 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <div className="mt-4 flex items-start gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
               <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0" />
 
               <div>
@@ -926,7 +926,7 @@ setAiResult(cleanedResult)
                   Resume extracted successfully.
                 </p>
 
-                <p className="mt-1 text-xs">
+                <p className="mt-1 text-xs text-emerald-300/80">
                   Your resume is ready for AI analysis.
                 </p>
               </div>
@@ -1110,7 +1110,7 @@ setAiResult(cleanedResult)
           {aiError ? (
             <div
               role="alert"
-              className="mt-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+              className="mt-4 flex items-start gap-3 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-300"
             >
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{aiError}</span>
@@ -1120,27 +1120,27 @@ setAiResult(cleanedResult)
           {aiResult ? (
             <div className="mt-5 space-y-5">
               <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <Card className="p-4">
                   <p className="text-xs text-muted-foreground">Overall score</p>
-                  <p className="mt-2 text-2xl font-bold">{aiResult.overallScore}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="mt-2 text-2xl font-bold text-foreground">{aiResult.overallScore}</p>
+                </Card>
+                <Card className="p-4">
                   <p className="text-xs text-muted-foreground">ATS score</p>
-                  <p className="mt-2 text-2xl font-bold">{aiResult.atsScore}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="mt-2 text-2xl font-bold text-foreground">{aiResult.atsScore}</p>
+                </Card>
+                <Card className="p-4">
                   <p className="text-xs text-muted-foreground">Keyword score</p>
-                  <p className="mt-2 text-2xl font-bold">{aiResult.keywordScore}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="mt-2 text-2xl font-bold text-foreground">{aiResult.keywordScore}</p>
+                </Card>
+                <Card className="p-4">
                   <p className="text-xs text-muted-foreground">Formatting score</p>
-                  <p className="mt-2 text-2xl font-bold">{aiResult.formattingScore}</p>
-                </div>
+                  <p className="mt-2 text-2xl font-bold text-foreground">{aiResult.formattingScore}</p>
+                </Card>
               </div>
 
               <div className="grid gap-5 lg:grid-cols-2">
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm font-semibold">Detected skills</p>
+                <Card className="p-4">
+                  <p className="text-sm font-semibold text-foreground">Detected skills</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {aiResult.detectedSkills.map((skill) => (
                       <Badge key={skill} variant="secondary">
@@ -1148,31 +1148,31 @@ setAiResult(cleanedResult)
                       </Badge>
                     ))}
                   </div>
-                </div>
+                </Card>
 
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm font-semibold">AI summary</p>
+                <Card className="p-4">
+                  <p className="text-sm font-semibold text-foreground">AI summary</p>
                   <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     {aiResult.aiSummary}
                   </p>
-                </div>
+                </Card>
               </div>
 
               <div className="grid gap-5 lg:grid-cols-2">
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm font-semibold">Resume strengths</p>
+                <Card className="p-4">
+                  <p className="text-sm font-semibold text-foreground">Resume strengths</p>
                   <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                     {aiResult.strengths.map((strength) => (
                       <li key={strength} className="flex items-start gap-2">
-                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
                         <span>{strength}</span>
                       </li>
                     ))}
                   </ul>
-                </div>
+                </Card>
 
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm font-semibold">Improvement areas</p>
+                <Card className="p-4">
+                  <p className="text-sm font-semibold text-foreground">Improvement areas</p>
                   <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                     {aiResult.improvements.map((item) => (
                       <li key={item} className="flex items-start gap-2">
@@ -1181,28 +1181,28 @@ setAiResult(cleanedResult)
                       </li>
                     ))}
                   </ul>
-                </div>
+                </Card>
               </div>
 
               <div className="grid gap-5 lg:grid-cols-3">
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm font-semibold">Missing skills</p>
+                <Card className="p-4">
+                  <p className="text-sm font-semibold text-foreground">Missing skills</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {aiResult.missingSkills.length > 0 ? aiResult.missingSkills.map((skill) => <Badge key={skill} variant="outline">{skill}</Badge>) : <p className="text-sm text-muted-foreground">No gaps identified.</p>}
                   </div>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm font-semibold">Certifications</p>
+                </Card>
+                <Card className="p-4">
+                  <p className="text-sm font-semibold text-foreground">Certifications</p>
                   <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                     {aiResult.certifications.length > 0 ? aiResult.certifications.map((item) => <li key={item}>{item}</li>) : <li>None listed in the resume.</li>}
                   </ul>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm font-semibold">ATS recommendations</p>
+                </Card>
+                <Card className="p-4">
+                  <p className="text-sm font-semibold text-foreground">ATS recommendations</p>
                   <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                     {aiResult.atsRecommendations.length > 0 ? aiResult.atsRecommendations.map((item) => <li key={item}>{item}</li>) : <li>No additional recommendations.</li>}
                   </ul>
-                </div>
+                </Card>
               </div>
             </div>
           ) : null}

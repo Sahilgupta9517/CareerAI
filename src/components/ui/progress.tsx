@@ -14,10 +14,10 @@ export function Progress({ value, className, indicatorClassName, ...props }: Pro
   }, [value])
 
   return (
-    <div className={cn('h-1.5 w-full overflow-hidden rounded-full bg-muted', className)} {...props}>
+    <div className={cn('h-1.5 w-full overflow-hidden rounded-full bg-muted/60', className)} {...props}>
       <div
-        className={cn('h-full rounded-full bg-primary transition-[width] duration-700 ease-out', indicatorClassName)}
-        style={{ width: `${width}%` }}
+        className={cn('h-full rounded-full transition-[width] duration-700 ease-out', indicatorClassName)}
+        style={{ width: `${width}%`, backgroundImage: 'linear-gradient(90deg, #2563EB, #22D3EE)' }}
       />
     </div>
   )

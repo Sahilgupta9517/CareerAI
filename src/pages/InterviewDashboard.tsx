@@ -129,22 +129,22 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
   }
 
   const getScoreColor = (score: number) => {
-    if (score >= 85) return 'text-green-600'
-    if (score >= 70) return 'text-blue-600'
-    if (score >= 60) return 'text-yellow-600'
-    return 'text-red-600'
+    if (score >= 85) return 'text-emerald-400'
+    if (score >= 70) return 'text-blue-400'
+    if (score >= 60) return 'text-amber-400'
+    return 'text-rose-400'
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-800'
+        return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
       case 'in_progress':
-        return 'bg-blue-100 text-blue-800'
+        return 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
       case 'abandoned':
-        return 'bg-gray-100 text-gray-800'
+        return 'bg-slate-500/15 text-slate-400 border border-slate-500/20'
       default:
-        return 'bg-gray-100 text-gray-800'
+        return 'bg-slate-500/15 text-slate-400 border border-slate-500/20'
     }
   }
 
@@ -158,8 +158,8 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-gray-400" />
-          <p className="text-gray-600">Loading your interview history...</p>
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-primary" />
+          <p className="text-muted-foreground">Loading your interview history...</p>
         </div>
       </div>
     )
@@ -174,44 +174,52 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 font-medium">Total Interviews</p>
-                  <p className="text-3xl font-bold mt-1">{stats.totalInterviews}</p>
+                  <p className="text-sm text-muted-foreground font-medium">Total Interviews</p>
+                  <p className="text-3xl font-bold mt-1 text-foreground">{stats.totalInterviews}</p>
                 </div>
-                <Target className="w-8 h-8 text-blue-500 opacity-20" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <Target className="w-5 h-5" />
+                </div>
               </div>
             </Card>
 
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 font-medium">Completed</p>
-                  <p className="text-3xl font-bold mt-1">{stats.completedInterviews}</p>
+                  <p className="text-sm text-muted-foreground font-medium">Completed</p>
+                  <p className="text-3xl font-bold mt-1 text-foreground">{stats.completedInterviews}</p>
                 </div>
-                <Award className="w-8 h-8 text-green-500 opacity-20" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                  <Award className="w-5 h-5" />
+                </div>
               </div>
             </Card>
 
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 font-medium">Average Score</p>
+                  <p className="text-sm text-muted-foreground font-medium">Average Score</p>
                   <p className={`text-3xl font-bold mt-1 ${getScoreColor(stats.averageScore)}`}>
                     {stats.averageScore}%
                   </p>
                 </div>
-                <TrendingUp className="w-8 h-8 text-yellow-500 opacity-20" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
               </div>
             </Card>
 
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 font-medium">Best Score</p>
+                  <p className="text-sm text-muted-foreground font-medium">Best Score</p>
                   <p className={`text-3xl font-bold mt-1 ${getScoreColor(stats.bestScore)}`}>
                     {stats.bestScore}%
                   </p>
                 </div>
-                <TrendingUp className="w-8 h-8 text-purple-500 opacity-20" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/15 text-violet-400">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
               </div>
             </Card>
           </div>
@@ -219,13 +227,13 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
           {/* Score Progress Chart */}
           {stats.scoreProgress.length > 0 && (
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Performance Trend</h3>
+              <h3 className="text-lg font-semibold mb-4 text-foreground">Performance Trend</h3>
               <div className="space-y-3">
                 {stats.scoreProgress.map((point, i) => (
                   <div key={i}>
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm text-gray-600">{point.date}</span>
-                      <span className="text-sm font-bold">{point.score}%</span>
+                      <span className="text-sm text-muted-foreground">{point.date}</span>
+                      <span className="text-sm font-bold text-foreground">{point.score}%</span>
                     </div>
                     <Progress value={point.score} className="h-2" />
                   </div>
@@ -237,12 +245,12 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
           {/* Topic Performance */}
           {stats.topicsPerformed.size > 0 && (
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Performance by Role</h3>
+              <h3 className="text-lg font-semibold mb-4 text-foreground">Performance by Role</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Array.from(stats.topicsPerformed.entries()).map(([topic, score]) => (
                   <div key={topic}>
                     <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-sm">{topic}</span>
+                      <span className="font-medium text-sm text-foreground">{topic}</span>
                       <span className={`text-sm font-bold ${getScoreColor(score)}`}>{score}%</span>
                     </div>
                     <Progress value={score} className="h-2" />
@@ -255,9 +263,9 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
       )}
 
       {/* Interview History */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold">Interview History</h3>
+      <Card className="overflow-hidden p-0">
+        <div className="flex flex-col gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-semibold text-foreground">Interview History</h3>
           <div className="flex flex-wrap justify-end gap-2">
             <Button onClick={() => onStartNewInterview({})} size="sm">
               <Play className="mr-2 h-4 w-4" />
@@ -280,29 +288,29 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
         </div>
 
         {filteredHistory.length === 0 ? (
-          <div className="text-center py-8">
-            <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            <p className="text-gray-600 mb-4">No interviews yet. Start your first interview to see results here.</p>
+          <div className="text-center py-12 px-6">
+            <AlertCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-muted-foreground mb-4">No interviews yet. Start your first interview to see results here.</p>
             <Button onClick={() => onStartNewInterview({})}>Start Interview</Button>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[760px]">
               <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-4 font-semibold">Role</th>
-                  <th className="text-left py-3 px-4 font-semibold">Type</th>
-                  <th className="text-left py-3 px-4 font-semibold">Difficulty</th>
-                  <th className="text-center py-3 px-4 font-semibold">Score</th>
-                  <th className="text-left py-3 px-4 font-semibold">Status</th>
-                  <th className="text-left py-3 px-4 font-semibold">Date</th>
-                  <th className="text-right py-3 px-4 font-semibold">Actions</th>
+                <tr className="border-b border-border/60 bg-muted/20">
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Role</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Type</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Difficulty</th>
+                  <th className="text-center py-3 px-4 font-semibold text-foreground">Score</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Status</th>
+                  <th className="text-left py-3 px-4 font-semibold text-foreground">Date</th>
+                  <th className="text-right py-3 px-4 font-semibold text-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredHistory.map((interview) => (
-                  <tr key={interview.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium">{interview.target_role}</td>
+                  <tr key={interview.id} className="border-b border-border/40 hover:bg-muted/15 transition-colors">
+                    <td className="py-3 px-4 font-medium text-foreground">{interview.target_role}</td>
                     <td className="py-3 px-4">
                       <div className="flex flex-wrap gap-1.5">
                         <Badge variant="outline">{interview.interview_type}</Badge>
@@ -320,7 +328,7 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
                           {interview.overall_score}%
                         </span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
@@ -328,7 +336,7 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
                         {interview.status === 'completed' || interview.overall_score !== null ? 'Completed' : 'In Progress'}
                       </Badge>
                     </td>
-                    <td className="py-3 px-4 text-gray-600">
+                    <td className="py-3 px-4 text-muted-foreground">
                       {new Date(interview.created_at).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -364,7 +372,7 @@ export function InterviewDashboard({ onStartNewInterview }: { onStartNewIntervie
                         <Button
                           size="sm"
                           variant="outline"
-                          className="px-2 text-red-600 hover:bg-red-50"
+                          className="px-2 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
                           onClick={() => handleDelete(interview.id)}
                           disabled={deleting === interview.id}
                           title="Delete Interview"

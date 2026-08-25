@@ -47,7 +47,7 @@ export function StatCard({
           <span
             className={cn(
               'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold',
-              trend >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700',
+              trend >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400',
             )}
           >
             <TrendIcon className="h-3 w-3" />

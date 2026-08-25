@@ -17,12 +17,13 @@ export function Modal({ open, onOpenChange, title, description, children, footer
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm data-[state=open]:animate-fade-in" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-navy-900/70 backdrop-blur-sm data-[state=open]:animate-fade-in" />
         <DialogPrimitive.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-glow data-[state=open]:animate-scale-in',
+            'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-card p-6 shadow-glow data-[state=open]:animate-scale-in',
             className,
           )}
+          style={{ borderColor: 'rgba(148,163,184,0.14)' }}
         >
           <DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>
           {description ? (

@@ -28,14 +28,12 @@ export function InterviewPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container max-w-6xl mx-auto px-4">
-        <PageHeader
-          title="Interview Preparation"
-          description="Practice with AI-powered mock interviews, track your progress, and prepare for real job interviews"
-        />
-        <InterviewDashboard onStartNewInterview={handleStartNewInterview} />
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Interview Preparation"
+        description="Practice with AI-powered mock interviews, track your progress, and prepare for real job interviews"
+      />
+      <InterviewDashboard onStartNewInterview={handleStartNewInterview} />
     </div>
   )
 }
