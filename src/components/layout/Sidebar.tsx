@@ -15,8 +15,8 @@ import {
 } from 'lucide-react'
 import { Logo } from '@/components/common/Logo'
 import { ProfileAvatar } from '@/components/common/ProfileAvatar'
-import { student } from '@/data/mock'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/context/AuthContext'
 
 export const navItems = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
@@ -39,6 +39,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }: SidebarProps) {
+  const { user } = useAuth()
+  const name = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Your profile'
+  const targetRole = user?.user_metadata?.target_role || 'Career profile'
+  const initials = name.split(/\s+/).map((part: string) => part[0]).join('').slice(0, 2).toUpperCase() || 'U'
   return (
     <>
       <div
@@ -51,12 +55,12 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
       />
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200/80 bg-white transition-[width,transform] duration-300 ease-out lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border/80 bg-white transition-[width,transform] duration-300 ease-out lg:translate-x-0',
           collapsed ? 'w-[76px]' : 'w-[264px]',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className={cn('flex h-[72px] items-center border-b border-border px-4', collapsed ? 'justify-center' : 'justify-between')}>
+        <div className={cn('flex h-[78px] items-center border-b border-border/70 px-4', collapsed ? 'justify-center' : 'justify-between')}>
           <Logo showText={!collapsed} />
           <button
             type="button"
@@ -68,7 +72,10 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-5">
+        <div className={cn('px-4 pt-5', collapsed && 'px-3')}>
+          {!collapsed ? <p className="px-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Workspace</p> : null}
+        </div>
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -77,10 +84,10 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
               title={collapsed ? item.label : undefined}
               className={({ isActive }) =>
                 cn(
-                  'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                  'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
                   collapsed && 'justify-center px-0',
                   isActive
-                    ? 'bg-blue-50 text-primary'
+                    ? 'bg-blue-50 text-primary shadow-sm'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )
               }
@@ -107,11 +114,11 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
               collapsed && 'justify-center',
             )}
           >
-            <ProfileAvatar initials={student.initials} status />
+            <ProfileAvatar initials={initials} status />
             {!collapsed ? (
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{student.name}</p>
-                <p className="truncate text-xs text-muted-foreground">{student.shortEducation}</p>
+                <p className="truncate text-sm font-semibold">{name}</p>
+                <p className="truncate text-xs text-muted-foreground">{targetRole}</p>
               </div>
             ) : null}
           </NavLink>

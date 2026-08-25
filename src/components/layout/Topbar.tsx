@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { Bell, Menu, Search, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ProfileAvatar } from '@/components/common/ProfileAvatar'
-import { notifications, student } from '@/data/mock'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/context/AuthContext'
 
 interface TopbarProps {
   onOpenMobileNav: () => void
@@ -12,9 +12,12 @@ interface TopbarProps {
 
 export function Topbar({ onOpenMobileNav }: TopbarProps) {
   const [openNotifications, setOpenNotifications] = useState(false)
+  const { user } = useAuth()
+  const name = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Your profile'
+  const initials = name.split(/\s+/).map((part: string) => part[0]).join('').slice(0, 2).toUpperCase() || 'U'
 
   return (
-    <header className="sticky top-0 z-30 flex h-[72px] items-center gap-3 border-b border-border bg-white/90 px-4 backdrop-blur-xl sm:px-8">
+    <header className="sticky top-0 z-30 flex h-[78px] items-center gap-3 border-b border-border/80 bg-white/90 px-4 backdrop-blur-xl sm:px-8">
       <button
         type="button"
         onClick={onOpenMobileNav}
@@ -24,13 +27,19 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
         <Menu className="h-5 w-5" />
       </button>
 
-      <div className="relative hidden max-w-sm flex-1 md:block">
+      <div className="hidden min-w-0 flex-1 items-center gap-4 md:flex">
+        <div className="hidden lg:block">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Career intelligence</p>
+          <p className="mt-0.5 text-sm font-semibold text-foreground">Your command center</p>
+        </div>
+        <div className="relative ml-auto w-full max-w-sm">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="search"
           placeholder="Search skills, jobs, roadmap…"
-          className="h-10 w-full rounded-lg border border-border bg-slate-50 pl-10 pr-4 text-sm outline-none transition-all placeholder:text-muted-foreground/80 focus:border-primary/40 focus:bg-white focus:ring-4 focus:ring-primary/10"
+          className="h-10 w-full rounded-xl border border-border bg-slate-50 pl-10 pr-4 text-sm outline-none transition-all placeholder:text-muted-foreground/80 focus:border-primary/60 focus:bg-white focus:ring-4 focus:ring-primary/10"
         />
+        </div>
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
@@ -49,7 +58,6 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5" />
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />
           </button>
           <div
             className={cn(
@@ -60,18 +68,12 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Notifications
             </p>
-            {notifications.map((item) => (
-              <div key={item.id} className="rounded-xl px-3 py-2.5 transition-colors hover:bg-muted">
-                <p className="text-sm font-medium">{item.title}</p>
-                <p className="text-xs text-muted-foreground">{item.body}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground/70">{item.time}</p>
-              </div>
-            ))}
+            <p className="px-3 py-3 text-sm text-muted-foreground">You are all caught up.</p>
           </div>
         </div>
 
         <Link to="/profile" aria-label="Open profile">
-          <ProfileAvatar initials={student.initials} status />
+          <ProfileAvatar initials={initials} status />
         </Link>
       </div>
     </header>

@@ -1,141 +1,111 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ArrowRight, BriefcaseBusiness, Check, Circle, GraduationCap, Map, Sparkles, Target } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, CalendarDays, Check, Loader2, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { AIRecommendationCard } from '@/components/common/AIRecommendationCard'
+import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/common/PageHeader'
+import { ProgressRing } from '@/components/common/ProgressRing'
 import { supabase } from '@/lib/supabase'
+import { roleRequirements } from '@/data/roleRequirements'
+import { generateRoadmap, type RoadmapItem, type RoadmapPhase, type RoadmapStatus } from '@/lib/roadmap'
+import { calculateRoleReadiness } from '@/lib/skillMatching'
+import { normalizeSkill } from '@/lib/jobMatching'
+import { sanitizeSkillList } from '@/lib/resumeParser'
+import type { UserSkill } from '@/types/skillGap'
 
-type Status = 'Not Started' | 'In Progress' | 'Completed'
 type DatabaseStatus = 'not_started' | 'in_progress' | 'completed'
-type PhaseName = 'Phase 1: Fundamentals' | 'Phase 2: Intermediate' | 'Phase 3: Advanced' | 'Phase 4: Job Ready'
-type RoadmapItem = { id: string; name: string; why: string; current: number; target: number; priority: 'High' | 'Medium' | 'Low'; topics: string[]; hours: number; task: string; phase: PhaseName }
+const toDatabase: Record<RoadmapStatus, DatabaseStatus> = { 'Not Started': 'not_started', 'In Progress': 'in_progress', Completed: 'completed' }
+const fromDatabase: Record<DatabaseStatus, RoadmapStatus> = { not_started: 'Not Started', in_progress: 'In Progress', completed: 'Completed' }
+const nextStatus: Record<RoadmapStatus, RoadmapStatus> = { 'Not Started': 'In Progress', 'In Progress': 'Completed', Completed: 'Not Started' }
+const priorityRank = { High: 3, Medium: 2, Low: 1 }
 
-type Skill = { id: number; name: string; category: string | null }
-const weights: Record<string, Record<string, number>> = {
-  'Frontend Developer': { Frontend: 1, Programming: 0.95, Tools: 0.8, 'Core CS': 0.7, Backend: 0.55, Data: 0.5 },
-  'Backend Developer': { Backend: 1, Programming: 0.95, Data: 0.9, 'Core CS': 0.85, Tools: 0.8, Frontend: 0.5 },
-  'Data Analyst': { Data: 1, Programming: 0.85, Tools: 0.8, 'Core CS': 0.6, Backend: 0.55, Frontend: 0.4 },
-  'Data Scientist': { Data: 1, Programming: 0.95, 'Core CS': 0.8, Tools: 0.75, Backend: 0.55, Frontend: 0.3 },
-  'AI/ML Engineer': { Programming: 1, Data: 0.95, 'Core CS': 0.9, Backend: 0.8, Tools: 0.8, Frontend: 0.3 },
-  'Cloud Engineer': { Backend: 0.95, Tools: 1, 'Core CS': 0.9, Programming: 0.8, Data: 0.65, Frontend: 0.35 },
-  'Software Developer': { Programming: 1, 'Core CS': 0.9, Backend: 0.85, Tools: 0.8, Data: 0.75, Frontend: 0.7 },
-}
-
-const topicsFor = (skill: Skill) => {
-  const name = skill.name.toLowerCase()
-  if (name.includes('sql')) return ['Joins and aggregations', 'Window functions', 'Query optimization']
-  if (name.includes('react')) return ['Component composition', 'State and effects', 'Performance patterns']
-  if (name.includes('javascript')) return ['Closures and async', 'Modules and APIs', 'Testing fundamentals']
-  if (name.includes('data structure') || name.includes('algorithm')) return ['Arrays and hashing', 'Trees and graphs', 'Complexity analysis']
-  if (name.includes('python')) return ['Functions and data models', 'Packages and testing', 'Practical automation']
-  return [`${skill.name} fundamentals`, `${skill.name} practical projects`, `${skill.name} interview patterns`]
-}
-
-const phaseFor = (current: number): PhaseName => current < 30 ? 'Phase 1: Fundamentals' : current < 60 ? 'Phase 2: Intermediate' : current < 80 ? 'Phase 3: Advanced' : 'Phase 4: Job Ready'
-const priorityFor = (gap: number): 'High' | 'Medium' | 'Low' => gap >= 45 ? 'High' : gap >= 20 ? 'Medium' : 'Low'
-const nextStatus: Record<Status, Status> = { 'Not Started': 'In Progress', 'In Progress': 'Completed', Completed: 'Not Started' }
-const toDisplayStatus: Record<DatabaseStatus, Status> = { not_started: 'Not Started', in_progress: 'In Progress', completed: 'Completed' }
-const toDatabaseStatus: Record<Status, DatabaseStatus> = { 'Not Started': 'not_started', 'In Progress': 'in_progress', Completed: 'completed' }
+type SkillRow = { skill?: { name?: string | null } | null; skill_id: number; proficiency?: number | null }
 
 export function RoadmapPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
-  const [targetRole, setTargetRole] = useState('')
-  const [preferenceText, setPreferenceText] = useState('')
-  const [items, setItems] = useState<RoadmapItem[]>([])
-  const [statuses, setStatuses] = useState<Record<string, Status>>({})
   const [profileId, setProfileId] = useState<number | null>(null)
+  const [targetRole, setTargetRole] = useState('')
+  const [resumeAnalyzed, setResumeAnalyzed] = useState(false)
+  const [userSkills, setUserSkills] = useState<UserSkill[]>([])
+  const [progressMap, setProgressMap] = useState<Record<string, RoadmapStatus>>({})
 
   useEffect(() => {
-    const loadRoadmap = async () => {
+    const load = async () => {
       try {
         const { data: userData, error: userError } = await supabase.auth.getUser()
         if (userError) throw userError
-        if (!userData.user) {
-          navigate('/login', { replace: true })
-          return
-        }
+        if (!userData.user) { navigate('/login', { replace: true }); return }
         const { data: profile, error: profileError } = await supabase.from('profiles').select('id').eq('user_id', userData.user.id).limit(1).maybeSingle()
         if (profileError) throw profileError
         if (!profile) throw new Error('Your profile could not be found. Please complete onboarding.')
-        setProfileId(profile.id)
-        const [savedResult, catalogResult, goalResult, preferenceResult, progressResult] = await Promise.all([
-          supabase.from('user_skills').select('skill_id, proficiency').eq('profile_id', profile.id),
-          supabase.from('skills').select('id, name, category').order('name'),
-          supabase.from('career_goals').select('target_role, preferred_location, work_preference, goal_description').eq('profile_id', profile.id).limit(1).maybeSingle(),
-          supabase.from('user_preferences').select('preferred_work_mode, preferred_locations, preferred_industries').eq('profile_id', profile.id).limit(1).maybeSingle(),
+        const [goalResult, skillsResult, resumeResult, progressResult] = await Promise.all([
+          supabase.from('career_goals').select('target_role').eq('profile_id', profile.id).limit(1).maybeSingle(),
+          supabase.from('user_skills').select('skill_id, proficiency, skill:skills(name)').eq('profile_id', profile.id),
+          supabase.from('resume_analyses').select('extracted_text, structured_resume').eq('profile_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
           supabase.from('roadmap_progress').select('roadmap_item_id, status').eq('profile_id', profile.id),
         ])
-        if (savedResult.error) throw savedResult.error
-        if (catalogResult.error) throw catalogResult.error
         if (goalResult.error) throw goalResult.error
-        if (preferenceResult.error) throw preferenceResult.error
-        if (progressResult.error) throw progressResult.error
-        const role = goalResult.data?.target_role
-        if (!role) return
-        setTargetRole(role)
-        const preference = preferenceResult.data
-        setPreferenceText([preference?.preferred_work_mode, preference?.preferred_locations, preference?.preferred_industries].filter(Boolean).join(' · '))
-        const roleWeights = weights[role] ?? weights['Software Developer']
-        const saved = new Map((savedResult.data ?? []).map((row) => [row.skill_id, Number(row.proficiency) || 0]))
-        const generated = (catalogResult.data as Skill[]).filter((skill) => (roleWeights[skill.category ?? ''] ?? 0) > 0).map((skill) => {
-          const target = Math.round(60 + (roleWeights[skill.category ?? ''] ?? 0) * 30)
-          const current = saved.get(skill.id) ?? 0
-          const gap = Math.max(0, target - current)
-          return { id: `skill-${skill.id}`, name: skill.name, why: `${skill.name} supports the ${role} responsibilities in the ${skill.category || 'core'} area.`, current, target, priority: priorityFor(gap), topics: topicsFor(skill), hours: Math.max(2, Math.ceil(gap / 8)), task: `Build a small ${skill.name} project and explain the trade-offs in an interview.`, phase: phaseFor(current) }
-        }).filter((item) => item.current < item.target).sort((left, right) => right.target - right.current - (left.target - left.current))
-        setItems(generated)
-        const savedStatuses = Object.fromEntries((progressResult.data ?? []).map((row) => [row.roadmap_item_id, toDisplayStatus[row.status as DatabaseStatus] || 'Not Started']))
-        setStatuses(Object.fromEntries(generated.map((item) => [item.id, savedStatuses[item.id] || 'Not Started'])))
-      } catch (error) {
-        if (import.meta.env.DEV) console.error('Supabase roadmap load error:', error)
-        const message = error instanceof Error
-          ? error.message
-          : error && typeof error === 'object' && 'message' in error
-            ? String(error.message)
-            : 'We could not build your learning roadmap.'
-        setErrorMessage(message)
-      } finally {
-        setLoading(false)
-      }
+        if (skillsResult.error) throw skillsResult.error
+        if (resumeResult.error) throw resumeResult.error
+        if (progressResult.error && progressResult.error.code !== 'PGRST205') throw progressResult.error
+        const role = goalResult.data?.target_role?.trim() ?? ''
+        const rows = (skillsResult.data ?? []) as unknown as SkillRow[]
+        const savedNames = rows.map((row) => row.skill?.name).filter((name): name is string => Boolean(name))
+        const savedSkills = sanitizeSkillList(savedNames).map((name) => {
+          const row = rows.find((candidate) => candidate.skill?.name && sanitizeSkillList([candidate.skill.name])[0] === name)
+          const proficiency = row?.proficiency == null ? undefined : Number(row.proficiency)
+          return { name, ...(proficiency !== undefined && Number.isFinite(proficiency) ? { proficiency } : {}) }
+        })
+        const structured = resumeResult.data?.structured_resume
+        const analyzed = Boolean(structured && typeof structured === 'object') || typeof resumeResult.data?.extracted_text === 'string'
+        const resumeNames = structured && typeof structured === 'object' && 'technicalSkills' in structured && Array.isArray(structured.technicalSkills) ? sanitizeSkillList(structured.technicalSkills) : []
+        setProfileId(profile.id); setTargetRole(role); setResumeAnalyzed(analyzed); setUserSkills([...savedSkills, ...resumeNames.filter((name) => !savedSkills.some((skill) => skill.name === name)).map((name) => ({ name }))])
+        setProgressMap(Object.fromEntries((progressResult.data ?? []).map((row) => [row.roadmap_item_id, fromDatabase[(row.status as DatabaseStatus) ?? 'not_started'] ?? 'Not Started'])))
+      } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'We could not load your roadmap data.')
+      } finally { setLoading(false) }
     }
-    void loadRoadmap()
+    void load()
   }, [navigate])
 
-  const overall = useMemo(() => items.length === 0 ? 0 : Math.round((items.filter((item) => statuses[item.id] === 'Completed').length / items.length) * 100), [items, statuses])
-  const phases: PhaseName[] = ['Phase 1: Fundamentals', 'Phase 2: Intermediate', 'Phase 3: Advanced', 'Phase 4: Job Ready']
-  const phaseProgress = (phase: PhaseName) => { const phaseItems = items.filter((item) => item.phase === phase); return phaseItems.length === 0 ? 0 : Math.round((phaseItems.filter((item) => statuses[item.id] === 'Completed').length / phaseItems.length) * 100) }
-  const toggleStatus = async (id: string) => {
+  const role = roleRequirements.find((item) => item.title === targetRole) ?? (targetRole === 'Software Developer' ? roleRequirements.find((item) => item.title === 'Software Engineer') : undefined)
+  const phases = useMemo(() => role ? generateRoadmap(role, userSkills).map((phase) => ({ ...phase, items: phase.items.map((item) => ({ ...item, status: progressMap[item.id] ?? item.status })) })) : [], [role, userSkills, progressMap])
+  const allItems = phases.flatMap((phase) => phase.items)
+  const completed = allItems.filter((item) => item.status === 'Completed').length
+  const overall = allItems.length ? Math.round((completed / allItems.length) * 100) : 0
+  const currentReadiness = role ? calculateRoleReadiness(role, userSkills) : 0
+  const missingSkills = role ? role.requiredSkills.filter((skill) => !userSkills.some((item) => normalizeSkill(item.name) === normalizeSkill(skill))).length : 0
+  const nextItem = [...allItems].filter((item) => item.status !== 'Completed').sort((left, right) => priorityRank[right.priority] - priorityRank[left.priority])[0]
+  const duration = allItems.reduce((total, item) => total + (item.duration.includes('week') ? 2 : 1), 0)
+
+  const toggleStatus = async (item: RoadmapItem) => {
     if (profileId === null) return
-    const previous = statuses[id] || 'Not Started'
+    const previous = progressMap[item.id] ?? item.status
     const next = nextStatus[previous]
-    setStatuses((current) => ({ ...current, [id]: next }))
-    const databaseStatus = toDatabaseStatus[next]
-    const { error } = await supabase.from('roadmap_progress').upsert(
-      { profile_id: profileId, roadmap_item_id: id, status: databaseStatus, completed_at: databaseStatus === 'completed' ? new Date().toISOString() : null },
-      { onConflict: 'profile_id,roadmap_item_id' },
-    )
-    if (error) {
-      if (import.meta.env.DEV) console.error('Supabase roadmap progress save error:', error)
-      setStatuses((current) => ({ ...current, [id]: previous }))
-      setErrorMessage(error.message)
-    }
+    setProgressMap((current) => ({ ...current, [item.id]: next }))
+    const { error } = await supabase.from('roadmap_progress').upsert({ profile_id: profileId, roadmap_item_id: item.id, status: toDatabase[next], completed_at: next === 'Completed' ? new Date().toISOString() : null }, { onConflict: 'profile_id,roadmap_item_id' })
+    if (error) { setProgressMap((current) => ({ ...current, [item.id]: previous })); setErrorMessage('Roadmap progress could not be saved. Please try again.') }
   }
 
-  if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" aria-label="Loading learning roadmap" /></div>
-  if (errorMessage) return <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{errorMessage}</div>
-  if (!targetRole) return <div role="status" className="rounded-2xl border border-border bg-white p-6 text-sm text-muted-foreground">Complete your career goal during onboarding to generate your personalized roadmap.</div>
-  if (items.length === 0) return <div role="status" className="rounded-2xl border border-border bg-white p-6 text-sm text-muted-foreground">Your saved skills already meet the current role baseline. No learning gaps are queued.</div>
+  if (loading) return <div className="space-y-5"><Skeleton className="h-16 w-full" /><Skeleton className="h-36 w-full" /><Skeleton className="h-72 w-full" /></div>
+  if (errorMessage && !targetRole) return <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{errorMessage}</div>
+  if (!targetRole) return <EmptyState icon={<Target className="h-8 w-8" />} title="Set a career goal to build your personalized roadmap." action="Choose a target role before planning your next steps." to="/skills" button="Set Target Role" />
+  if (!resumeAnalyzed) return <EmptyState icon={<GraduationCap className="h-8 w-8" />} title="Analyze your resume to unlock your personalized roadmap." action="CareerAI needs your actual skills and projects to create evidence-based learning steps." to="/resume-analyzer" button="Analyze Resume" />
+  if (!role) return <EmptyState icon={<Target className="h-8 w-8" />} title="Choose a supported target role to build your roadmap." action="Update your target role in Skill Gap Analysis." to="/skills" button="Open Skill Gap" />
 
   return <div className="space-y-6">
-    <PageHeader title="Career Roadmap" description={`A personalized plan for becoming a ${targetRole}.`} eyebrow={<Badge variant="outline" className="border-primary/20 text-primary"><Sparkles className="h-3.5 w-3.5" /> Built from your skill gaps</Badge>} actions={<Button asChild variant="outline"><Link to="/skills">Why these skills? <ArrowRight className="h-4 w-4" /></Link></Button>} />
-    <Card className="p-6"><div className="grid gap-6 sm:grid-cols-3"><div><p className="text-sm text-muted-foreground">Overall progress</p><p className="mt-1 text-3xl font-bold">{overall}%</p><Progress value={overall} className="mt-3" /></div><div><p className="text-sm text-muted-foreground">Current phase</p><p className="mt-1 text-lg font-semibold">{phases.find((phase) => items.some((item) => item.phase === phase && statuses[item.id] !== 'Completed')) || 'Job Ready'}</p><p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarDays className="h-3.5 w-3.5" /> Prioritized by largest skill gaps</p></div><div><p className="text-sm text-muted-foreground">Preferences</p><p className="mt-1 text-lg font-semibold">{preferenceText || '—'}</p><p className="mt-1 text-xs text-muted-foreground">Real profile context</p></div></div></Card>
-    <div className="grid gap-5 lg:grid-cols-2">{phases.map((phase) => { const phaseItems = items.filter((item) => item.phase === phase); return <Card key={phase} className="p-6"><div className="flex items-center justify-between gap-3"><div><h2 className="text-base font-semibold">{phase}</h2><p className="mt-1 text-sm text-muted-foreground">{phaseItems.length} learning items</p></div><Badge variant={phaseProgress(phase) === 100 ? 'success' : 'secondary'}>{phaseProgress(phase)}%</Badge></div><Progress value={phaseProgress(phase)} className="mt-4" /><div className="mt-5 space-y-4">{phaseItems.map((item) => <div key={item.id} className="rounded-xl border border-border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-semibold">{item.name}</h3><p className="mt-1 text-xs text-muted-foreground">{item.why}</p></div><Badge variant={item.priority === 'High' ? 'danger' : item.priority === 'Medium' ? 'warning' : 'secondary'}>{item.priority}</Badge></div><div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2"><span>Current: <strong className="text-foreground">{item.current}%</strong> · Target: <strong className="text-foreground">{item.target}%</strong></span><span>Estimated: <strong className="text-foreground">{item.hours}h</strong></span></div><p className="mt-3 text-xs"><strong>Topics:</strong> {item.topics.join(' · ')}</p><p className="mt-2 text-xs text-muted-foreground"><strong>Practice:</strong> {item.task}</p><Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => toggleStatus(item.id)}><Check className="h-4 w-4" /> {statuses[item.id] || 'Not Started'}</Button></div>)}</div>{phaseItems.length === 0 ? <p className="mt-5 text-sm text-muted-foreground">Nothing queued for this phase.</p> : null}</Card> })}</div>
-    <AIRecommendationCard message={`Your roadmap is ordered by the largest gaps for ${targetRole}. Complete fundamentals before advancing to higher-level topics${preferenceText ? `, aligned with ${preferenceText}` : ''}.`} action={<Button asChild variant="outline"><Link to="/jobs">View job matches <ArrowRight className="h-4 w-4" /></Link></Button>} />
+    <PageHeader title="Career Roadmap" description={`A dynamic learning path built from your ${targetRole} skill gaps and analyzed resume.`} eyebrow={<Badge variant="outline" className="border-primary/20 text-primary"><Map className="h-3.5 w-3.5" /> Evidence-based plan</Badge>} actions={<Button asChild variant="outline"><Link to="/skills">Review Skill Gaps <ArrowRight className="h-4 w-4" /></Link></Button>} />
+    {errorMessage ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{errorMessage}</div> : null}
+    <Card className="border-primary/15 bg-brand-soft p-5"><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5"><div><p className="text-xs text-muted-foreground">Target role</p><p className="mt-1 text-lg font-semibold">{targetRole}</p></div><div><p className="text-xs text-muted-foreground">Current readiness</p><p className="mt-1 text-lg font-semibold">{currentReadiness}%</p></div><div><p className="text-xs text-muted-foreground">Current skills</p><p className="mt-1 text-lg font-semibold">{userSkills.length}</p></div><div><p className="text-xs text-muted-foreground">Required gaps</p><p className="mt-1 text-lg font-semibold">{missingSkills}</p></div><div className="flex items-center gap-3"><ProgressRing value={overall} size={64} label={`${overall}%`} /><div><p className="text-xs text-muted-foreground">Roadmap progress</p><p className="text-sm font-semibold">{completed} of {allItems.length} complete</p></div></div></div><div className="mt-4 border-t border-primary/10 pt-4"><p className="text-xs text-muted-foreground">Estimated duration</p><p className="mt-1 text-sm font-semibold">{Math.max(1, Math.ceil(duration / 2))}-{Math.max(2, duration)} weeks based on the generated learning tasks</p></div></Card>
+    <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]"><Card className="p-5"><div className="flex items-center gap-3"><Sparkles className="h-5 w-5 text-primary" /><div><h2 className="text-base font-semibold">Recommended Next Step</h2><p className="mt-1 text-xs text-muted-foreground">Highest-priority incomplete learning task.</p></div></div>{nextItem ? <div className="mt-4 rounded-lg border border-border p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold">{nextItem.skill}</p><p className="mt-1 text-xs text-muted-foreground">{nextItem.priority} priority · {nextItem.difficulty} · {nextItem.duration}</p></div><Badge variant={nextItem.priority === 'High' ? 'danger' : 'warning'}>{nextItem.status}</Badge></div><p className="mt-3 text-xs text-muted-foreground">{nextItem.why}</p><Button size="sm" variant="outline" className="mt-4" onClick={() => void toggleStatus(nextItem)}>{nextItem.status === 'Not Started' ? 'Start Learning' : 'Continue Learning'} <ArrowRight className="h-3.5 w-3.5" /></Button></div> : <p className="mt-4 text-sm text-muted-foreground">All roadmap tasks are complete.</p>}</Card><Card className="p-5"><div className="flex items-center gap-3"><BriefcaseBusiness className="h-5 w-5 text-primary" /><div><h2 className="text-base font-semibold">Build Projects</h2><p className="mt-1 text-xs text-muted-foreground">Practical evidence for your remaining gaps.</p></div></div><div className="mt-4 space-y-3">{phases.find((phase) => phase.name === 'Phase 4 - Projects & Practice')?.items.slice(0, 3).map((item) => <div key={item.id} className="rounded-lg border border-border p-3"><p className="text-sm font-semibold">{item.skill}</p><p className="mt-1 text-xs text-muted-foreground">{item.task}</p></div>)}</div></Card></div>
+    <div className="space-y-5">{phases.map((phase, index) => <PhaseCard key={phase.name} phase={phase} index={index} onToggle={toggleStatus} />)}</div>
   </div>
 }
+
+function EmptyState({ icon, title, action, to, button }: { icon: React.ReactNode; title: string; action: string; to: string; button: string }) { return <div className="rounded-xl border border-dashed border-border bg-slate-50/70 p-8 text-center"><span className="mx-auto flex w-fit text-muted-foreground">{icon}</span><h2 className="mt-3 text-base font-semibold">{title}</h2><p className="mt-1 text-sm text-muted-foreground">{action}</p><Button asChild className="mt-5"><Link to={to}>{button} <ArrowRight className="h-4 w-4" /></Link></Button></div> }
+function PhaseCard({ phase, index, onToggle }: { phase: RoadmapPhase; index: number; onToggle: (item: RoadmapItem) => void }) { const completed = phase.items.filter((item) => item.status === 'Completed').length; const progress = phase.items.length ? Math.round((completed / phase.items.length) * 100) : 0; return <Card className="p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-primary">{index + 1}</span><h2 className="text-base font-semibold">{phase.name}</h2></div><p className="mt-1 text-sm text-muted-foreground">{phase.description}</p></div><Badge variant={progress === 100 ? 'success' : 'secondary'}>{progress}% complete</Badge></div><Progress value={progress} className="mt-4 h-1.5" /><div className="mt-5 grid gap-3">{phase.items.length ? phase.items.map((item) => <RoadmapItemCard key={item.id} item={item} onToggle={onToggle} />) : <p className="text-sm text-muted-foreground">No tasks are needed in this phase for the current gaps.</p>}</div></Card> }
+function RoadmapItemCard({ item, onToggle }: { item: RoadmapItem; onToggle: (item: RoadmapItem) => void }) { const statusVariant = item.status === 'Completed' ? 'success' : item.status === 'In Progress' ? 'warning' : 'secondary'; return <div className="rounded-lg border border-border p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold">{item.skill}</h3><Badge variant={item.priority === 'High' ? 'danger' : item.priority === 'Medium' ? 'warning' : 'secondary'}>{item.priority}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{item.why}</p></div><Badge variant={statusVariant}><span className="flex items-center gap-1">{item.status === 'Completed' ? <Check className="h-3 w-3" /> : item.status === 'In Progress' ? <Circle className="h-3 w-3" /> : null}{item.status}</span></Badge></div><div className="mt-3 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4"><div><b>Difficulty</b><p className="mt-1 text-muted-foreground">{item.difficulty}</p></div><div><b>Time</b><p className="mt-1 text-muted-foreground">{item.duration}</p></div><div><b>What to learn</b><p className="mt-1 text-muted-foreground">{item.outcome}</p></div><div><b>Prerequisites</b><p className="mt-1 text-muted-foreground">{item.prerequisites.length ? item.prerequisites.join(', ') : 'None'}</p></div></div><p className="mt-3 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground"><b className="text-foreground">Practical task:</b> {item.task}</p><Button type="button" size="sm" variant="outline" className="mt-4" onClick={() => onToggle(item)}>{item.status === 'Not Started' ? 'Start Learning' : item.status === 'In Progress' ? 'Mark Complete' : 'Reset'} <ArrowRight className="h-3.5 w-3.5" /></Button></div> }

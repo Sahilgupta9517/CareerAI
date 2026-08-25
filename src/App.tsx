@@ -51,6 +51,7 @@ export default function App() {
         <Route path="/roadmap" element={<RoadmapPage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/interview" element={<InterviewPage />} />
+        <Route path="/interview/:interviewId" element={<InterviewPage />} />
         <Route path="/progress" element={<ProgressPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />

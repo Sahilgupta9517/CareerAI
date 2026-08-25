@@ -7,12 +7,52 @@ import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { PageHeader } from '@/components/common/PageHeader'
 import { supabase } from '@/lib/supabase'
+import { fetchApi } from '@/lib/apiClient'
 
+type ResumeContext = {
+  overall_score: number | null
+  ats_score: number | null
+  keyword_score: number | null
+  formatting_score: number | null
+  detected_skills: string[] | null
+  strengths: string[] | null
+  improvements: string[] | null
+  missing_skills: string[] | null
+  ats_recommendations: string[] | null
+  ai_summary: string | null
+}
 type UserData = {
-  profile: { name: string | null; education: string | null; branch: string | null; experience: string | null; location: string | null }
-  skills: Array<{ id: number; name: string; proficiency: number; category: string | null }>
-  goal: { target_role: string | null; preferred_location: string | null; work_preference: string | null; goal_description: string | null } | null
-  preferences: { preferred_job_type: string | null; preferred_work_mode: string | null; preferred_locations: string | null; expected_salary: string | number | null; preferred_industries: string | null } | null
+  profile: {
+    name: string | null
+    education: string | null
+    branch: string | null
+    experience: string | null
+    location: string | null
+  }
+
+  skills: Array<{
+    id: number
+    name: string
+    proficiency: number
+    category: string | null
+  }>
+
+  goal: {
+    target_role: string | null
+    preferred_location: string | null
+    work_preference: string | null
+    goal_description: string | null
+  } | null
+
+  preferences: {
+    preferred_job_type: string | null
+    preferred_work_mode: string | null
+    preferred_locations: string | null
+    expected_salary: string | number | null
+    preferred_industries: string | null
+  } | null
+
+  resume: ResumeContext | null
 }
 
 type AiAnalysis = {
@@ -41,6 +81,7 @@ export function CareerAnalysisPage() {
   const navigate = useNavigate()
   const [data, setData] = useState<UserData | null>(null)
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(null)
+  const [latestCareerAnalysis, setLatestCareerAnalysis] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -52,45 +93,73 @@ export function CareerAnalysisPage() {
       navigate('/login', { replace: true })
       return null
     }
-    const { data: profile, error: profileError } = await supabase.from('profiles').select('id, name, education, branch, experience, location').eq('user_id', userData.user.id).limit(1).maybeSingle()
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, name, education, branch, experience, location')
+      .eq('user_id', userData.user.id)
+      .limit(1)
+      .maybeSingle()
+
     if (profileError) throw profileError
     if (!profile) throw new Error('Your profile could not be found. Please complete onboarding.')
-    const [skillsResult, goalResult, preferencesResult] = await Promise.all([
+
+    const [skillsResult, goalResult, preferencesResult, resumeResult] = await Promise.all([
       supabase.from('user_skills').select('id, proficiency, skill:skills(id, name, category)').eq('profile_id', profile.id),
       supabase.from('career_goals').select('target_role, preferred_location, work_preference, goal_description').eq('profile_id', profile.id).limit(1).maybeSingle(),
       supabase.from('user_preferences').select('preferred_job_type, preferred_work_mode, preferred_locations, expected_salary, preferred_industries').eq('profile_id', profile.id).limit(1).maybeSingle(),
+      supabase.from('resume_analyses').select('overall_score, ats_score, keyword_score, formatting_score, detected_skills, strengths, improvements, missing_skills, ats_recommendations, ai_summary, created_at').eq('profile_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     ])
+
     if (skillsResult.error) throw skillsResult.error
     if (goalResult.error) throw goalResult.error
-    if (preferencesResult.error) throw preferencesResult.error
+    if (resumeResult.error) {
+      console.error('Could not load latest resume analysis:', resumeResult.error)
+    }
+
     const skills = (skillsResult.data ?? []).map((row) => {
       const skill = row.skill as unknown as { id: number; name: string; category: string | null } | null
-      return { id: row.id, name: skill?.name ?? 'Unknown skill', proficiency: Number(row.proficiency) || 0, category: skill?.category ?? null }
+      return {
+        id: row.id,
+        name: skill?.name ?? 'Unknown skill',
+        proficiency: Number(row.proficiency) || 0,
+        category: skill?.category ?? null,
+      }
     })
-    return { profile, skills, goal: goalResult.data, preferences: preferencesResult.data }
+
+    return {
+      profile,
+      skills,
+      goal: goalResult.data,
+      preferences: preferencesResult.data,
+      resume: resumeResult.data ?? null,
+    }
   }
 
   useEffect(() => {
     const init = async () => {
       try {
         const userData = await loadUserData()
-        if (userData) {
-          setData(userData)
-        }
-        
-        // Load latest career analysis
-        const sessionRes = await supabase.auth.getSession()
-        const token = sessionRes.data.session?.access_token
-        if (token) {
-          const response = await fetch('/api/dashboard-stats', {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-          if (response.ok) {
-            const stats = await response.json()
-            if (stats.latestCareerAnalysis) {
-              setAnalysis(stats.latestCareerAnalysis)
-            }
-          }
+        if (!userData) return
+
+        setData(userData)
+        const currentTargetRole = userData.goal?.target_role ?? ''
+        const { data: latestAnalysisData, error: latestAnalysisError } = await supabase
+          .from('career_analyses')
+          .select('*')
+          .eq('profile_id', userData.profile.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (latestAnalysisError) throw latestAnalysisError
+
+        setLatestCareerAnalysis(latestAnalysisData ?? null)
+        if (latestAnalysisData && currentTargetRole && latestAnalysisData.target_role === currentTargetRole) {
+          const parsedAnalysis = isAiAnalysis(latestAnalysisData) ? latestAnalysisData : null
+          setAnalysis(parsedAnalysis)
+        } else {
+          setAnalysis(null)
         }
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'We could not load your career data.')
@@ -103,6 +172,12 @@ export function CareerAnalysisPage() {
 
   const generateAnalysis = async () => {
     if (!data) return
+    const targetRole = data.goal?.target_role ?? ''
+    if (!targetRole) {
+      setErrorMessage('Set a target role before generating a new AI Career Analysis.')
+      return
+    }
+
     setGenerating(true)
     setErrorMessage('')
     try {
@@ -110,28 +185,23 @@ export function CareerAnalysisPage() {
       const token = sessionRes.data.session?.access_token
       if (!token) throw new Error('You must be logged in to generate career analysis.')
 
-      const response = await fetch('/api/career/analyze', {
+      const result = await fetchApi('/api/career/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           profile: data.profile,
           skills: data.skills,
-          careerGoal: data.goal,
-          preferences: data.preferences
-        })
-      })
-
-      if (!response.ok) {
-        const errPayload = await response.json().catch(() => null)
-        throw new Error(errPayload?.error || 'Failed to complete career analysis.')
-      }
-
-      const result = await response.json()
+          careerGoal: { ...(data.goal ?? {}), target_role: targetRole },
+          preferences: data.preferences,
+          resumeAnalysis: data.resume,
+        }),
+      }, 'Career analysis')
       if (!isAiAnalysis(result)) throw new Error('The AI provider returned an incomplete analysis.')
       setAnalysis(result)
+      setLatestCareerAnalysis({ ...result, target_role: targetRole })
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'We could not generate your AI analysis.')
     } finally {
@@ -141,6 +211,7 @@ export function CareerAnalysisPage() {
 
   const skillAverage = data?.skills.length ? Math.round(data.skills.reduce((sum, skill) => sum + skill.proficiency, 0) / data.skills.length) : 0
   const targetRole = data?.goal?.target_role || ''
+  const roleChangedMessage = targetRole && latestCareerAnalysis && latestCareerAnalysis.target_role !== targetRole ? `Your target role changed to ${targetRole}. Generate a new AI Career Analysis.` : ''
 
   if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" aria-label="Loading career data" /></div>
   if (errorMessage && !data) return <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{errorMessage}</div>
@@ -149,6 +220,7 @@ export function CareerAnalysisPage() {
   return <div className="space-y-6">
     <PageHeader title="AI Career Analysis" description={targetRole ? `Generate a structured analysis for your ${targetRole} path.` : 'Complete your career goal before generating an analysis.'} eyebrow={<Badge variant="outline" className="border-primary/20 text-primary"><Sparkles className="h-3.5 w-3.5" /> Secure AI analysis</Badge>} actions={<div className="flex gap-2"><Button onClick={generateAnalysis} disabled={generating || !targetRole}>{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {analysis ? 'Regenerate Analysis' : 'Generate AI Analysis'}</Button><Button asChild variant="outline"><Link to="/skills">View skill gaps <ArrowRight className="h-4 w-4" /></Link></Button></div>} />
     {errorMessage ? <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{errorMessage}</div> : null}
+    {roleChangedMessage ? <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{roleChangedMessage}</div> : null}
 
     <Card className="relative overflow-hidden p-6"><div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-brand-gradient opacity-10 blur-3xl" /><div className="relative grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center"><div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Career Overview</p><h2 className="mt-2 text-2xl font-bold">{show(data.profile.name)} · {show(targetRole)}</h2><p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{analysis?.career_summary || 'Your AI-generated summary will appear here after you generate the analysis.'}</p><div className="mt-4 flex flex-wrap gap-2"><Badge variant="secondary">{show(data.profile.education)}</Badge><Badge variant="secondary">{show(data.profile.experience)}</Badge><Badge variant="secondary">{show(data.profile.location)}</Badge></div></div><div className="min-w-44 rounded-2xl bg-brand-soft p-5 text-center"><p className="text-xs text-muted-foreground">Current skill average</p><p className="mt-1 text-4xl font-bold text-primary">{skillAverage}%</p><Progress value={skillAverage} className="mt-3" /></div></div></Card>
 

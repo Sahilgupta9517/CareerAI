@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
 export const getSupabaseClient = (authHeader: string | undefined) => {
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://lkiudezbyipdlzbflupq.supabase.co'
-  const supabaseAnonKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_g5pU62EmutQTiYMT-nxGSg_dY5xrXxU'
+  const supabaseUrl = process.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase server configuration is missing.')
 
   return createClient(supabaseUrl, supabaseAnonKey, {
     global: {

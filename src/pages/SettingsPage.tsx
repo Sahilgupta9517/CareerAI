@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, LogOut, Shield, Sparkles, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -10,14 +10,19 @@ import { Switch } from '@/components/ui/switch'
 import { PageHeader } from '@/components/common/PageHeader'
 import { useToast } from '@/components/common/Toast'
 import { useAuth } from '@/context/AuthContext'
-import { student, targetRoles } from '@/data/mock'
+import { roleRequirements } from '@/data/roleRequirements'
+import { getProfile, updateProfile } from '@/lib/profileService'
 
 export function SettingsPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { signOut } = useAuth()
   const [loggingOut, setLoggingOut] = useState(false)
-  const [account, setAccount] = useState({ name: student.name, email: student.email, role: student.targetRole })
+  const [account, setAccount] = useState({ name: '', email: '', role: '' })
+  const [accountLoading, setAccountLoading] = useState(true)
+  const [accountSaving, setAccountSaving] = useState(false)
+  const [accountError, setAccountError] = useState('')
+  const [profileDraft, setProfileDraft] = useState({ location: '', graduationYear: '', education: '', branch: '', summary: '', goal: '', workPreference: '', industry: '' })
   const [prefs, setPrefs] = useState({
     weeklyDigest: true,
     jobAlerts: true,
@@ -25,6 +30,19 @@ export function SettingsPage() {
     aiTips: true,
     publicProfile: false,
   })
+
+  useEffect(() => {
+    const loadAccount = async () => {
+      try {
+        const data = await getProfile()
+        setAccount({ name: data.profile.name ?? '', email: data.email, role: data.goal?.target_role ?? '' })
+        setProfileDraft({ location: data.profile.location ?? '', graduationYear: data.profile.graduation_year ?? '', education: data.profile.education ?? '', branch: data.profile.branch ?? '', summary: data.profile.experience ?? '', goal: data.goal?.goal_description ?? '', workPreference: data.goal?.work_preference ?? '', industry: data.preferences?.preferred_industries ?? '' })
+      } catch (error) {
+        setAccountError(error instanceof Error ? error.message : 'Account data could not be loaded.')
+      } finally { setAccountLoading(false) }
+    }
+    void loadAccount()
+  }, [])
 
   const toggle = (key: keyof typeof prefs) => (value: boolean) => {
     setPrefs((current) => ({ ...current, [key]: value }))
@@ -40,6 +58,17 @@ export function SettingsPage() {
       return
     }
     navigate('/login')
+  }
+
+  const saveAccount = async () => {
+    setAccountSaving(true)
+    setAccountError('')
+    try {
+      await updateProfile({ name: account.name, targetRole: account.role, ...profileDraft })
+      toast({ title: 'Account updated', description: 'Your target role is now shared across CareerAI.', tone: 'success' })
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : 'Account details could not be saved.')
+    } finally { setAccountSaving(false) }
   }
 
   return (
@@ -71,7 +100,7 @@ export function SettingsPage() {
               id="settings-email"
               type="email"
               value={account.email}
-              onChange={(event) => setAccount({ ...account, email: event.target.value })}
+              readOnly
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
@@ -81,14 +110,15 @@ export function SettingsPage() {
               value={account.role}
               onChange={(event) => setAccount({ ...account, role: event.target.value })}
             >
-              {targetRoles.map((role) => (
-                <option key={role}>{role}</option>
+              {roleRequirements.map((role) => (
+                <option key={role.id}>{role.title}</option>
               ))}
             </Select>
           </div>
         </div>
         <div className="mt-6 flex justify-end">
-          <Button onClick={() => toast({ title: 'Account updated', tone: 'success' })}>Save changes</Button>
+          {accountError ? <p role="alert" className="mr-auto text-sm text-rose-600">{accountError}</p> : null}
+          <Button onClick={() => void saveAccount()} disabled={accountLoading || accountSaving || !account.name.trim() || !account.role}>{accountSaving ? 'Saving...' : 'Save changes'}</Button>
         </div>
       </Card>
 

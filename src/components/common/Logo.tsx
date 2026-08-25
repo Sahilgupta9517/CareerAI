@@ -4,25 +4,27 @@ interface LogoProps {
   className?: string
   showText?: boolean
   tagline?: boolean
+  light?: boolean
 }
 
-export function Logo({ className, showText = true, tagline = false }: LogoProps) {
+export function Logo({ className, showText = true, tagline = false, light = false }: LogoProps) {
   return (
     <div className={cn('flex items-center gap-2.5', className)}>
-      <div className="relative flex h-9 w-9 items-center justify-center rounded-lg bg-brand-gradient shadow-soft">
-        <svg viewBox="0 0 24 24" className="h-[21px] w-[21px] text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M5 17 12 5l7 12" />
-          <path d="M8 14h8" />
-          <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
+      <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-brand-gradient shadow-soft">
+        <svg viewBox="0 0 24 24" className="h-[21px] w-[21px] text-white" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 17V8l6-3 6 3v9l-6 3-6-3Z" />
+          <path d="M6 8l6 3 6-3M12 11v9" />
+          <circle cx="9" cy="14" r="1" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="14" r="1" fill="currentColor" stroke="none" />
         </svg>
       </div>
       {showText ? (
         <div className="leading-tight">
-            <span className="block text-[17px] font-bold tracking-tight text-foreground">
+            <span className={cn('block text-[17px] font-extrabold tracking-tight', light ? 'text-white' : 'text-foreground')}>
             Career<span className="text-gradient">AI</span>
           </span>
           {tagline ? (
-            <span className="block text-[11px] font-medium text-muted-foreground">Your AI-Powered Career Coach</span>
+            <span className={cn('block text-[10px] font-semibold', light ? 'text-white/70' : 'text-muted-foreground')}>AI-Powered Career Intelligence</span>
           ) : null}
         </div>
       ) : null}

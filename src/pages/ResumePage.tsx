@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react'
+import {
+  analyzeResumeOnServer,
+  extractResumeOnServer,
+} from '@/lib/resumeExtract'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, ArrowRight, CheckCircle2, Download, Sparkles } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -17,26 +21,69 @@ import { SkillBadge } from '@/components/common/SkillBadge'
 import { Modal } from '@/components/ui/modal'
 import { useToast } from '@/components/common/Toast'
 import { resumeAnalysis } from '@/data/mock'
+import type { ResumeAnalyzeResult } from '@/lib/resumeExtract'
 
 export function ResumePage() {
   const { toast } = useToast()
   const [state, setState] = useState<UploadState>('idle')
   const [fileName, setFileName] = useState(resumeAnalysis.fileName)
   const [improveOpen, setImproveOpen] = useState(false)
+ const [analysis, setAnalysis] = useState<ResumeAnalyzeResult | null>(null)
+ const [errorMessage, setErrorMessage] = useState('')
 
-  useEffect(() => {
-    if (state !== 'analyzing') return
-    const id = window.setTimeout(() => {
-      setState('done')
-      toast({ title: 'Resume analyzed', description: `Score ${resumeAnalysis.score}/100 — 3 improvements found.`, tone: 'ai' })
-    }, 2200)
-    return () => window.clearTimeout(id)
-  }, [state, toast])
+ 
 
-  const startUpload = (name: string) => {
-    setFileName(name)
-    setState('analyzing')
+  const startUpload = async (file: File) => {
+  setFileName(file.name)
+  setState('analyzing')
+  setErrorMessage('')
+  setAnalysis(null)
+
+  try {
+    const extracted = await extractResumeOnServer(file)
+
+    const targetRole = 'Software Developer'
+
+    const result = await analyzeResumeOnServer(
+      extracted,
+      targetRole
+    )
+
+    setAnalysis(result)
+    setState('done')
+
+    toast({
+      title: 'Resume analyzed successfully',
+      description: `AI Resume Score: ${result.overallScore}/100`,
+      tone: 'ai',
+    })
+  } catch (error) {
+    console.error('Resume analysis failed:', error)
+
+    setState('idle')
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Resume analysis failed. Please try again.'
+
+    setErrorMessage(message)
+
+    toast({
+      title: 'Resume analysis failed',
+      description: message,
+      tone: 'info',
+    })
   }
+}
+const sectionData = analysis
+  ? [
+      { name: 'ATS', score: analysis.atsScore },
+      { name: 'Keywords', score: analysis.keywordScore },
+      { name: 'Formatting', score: analysis.formattingScore },
+      { name: 'Overall', score: analysis.overallScore },
+    ]
+  : []
 
   return (
     <div className="space-y-6">
@@ -64,6 +111,11 @@ export function ResumePage() {
         onUpload={startUpload}
         onReset={() => setState('idle')}
       />
+      {errorMessage ? (
+  <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+    {errorMessage}
+  </div>
+) : null}
 
       {state === 'analyzing' ? (
         <div className="grid gap-5 lg:grid-cols-3">
@@ -77,22 +129,27 @@ export function ResumePage() {
           <div className="grid gap-5 lg:grid-cols-3">
             <Card className="flex flex-col items-center p-6 text-center">
               <h2 className="self-start text-base font-semibold">Resume Score</h2>
-              <ProgressRing value={resumeAnalysis.score} size={168} className="my-5" label="out of 100" />
+              <ProgressRing
+  value={analysis?.overallScore ?? 0}
+  size={168}
+  className="my-5"
+  label="out of 100"
+/>
               <Badge variant="success">Top 12% of B.Tech CSE students</Badge>
               <div className="mt-6 w-full space-y-4">
                 <div>
                   <div className="mb-1.5 flex justify-between text-xs">
                     <span className="text-muted-foreground">ATS compatibility</span>
-                    <span className="font-semibold">{resumeAnalysis.atsScore}%</span>
+                    <span className="font-semibold">{analysis?.atsScore ?? 0}%</span>
                   </div>
-                  <Progress value={resumeAnalysis.atsScore} className="h-1.5" />
+                  <Progress value={analysis?.atsScore ?? 0} className="h-1.5" />
                 </div>
                 <div>
                   <div className="mb-1.5 flex justify-between text-xs">
                     <span className="text-muted-foreground">Keyword coverage</span>
-                    <span className="font-semibold">{resumeAnalysis.keywordScore}%</span>
+                    <span className="font-semibold">{analysis?.keywordScore ?? 0}%</span>
                   </div>
-                  <Progress value={resumeAnalysis.keywordScore} className="h-1.5" />
+                  <Progress value={analysis?.keywordScore ?? 0} className="h-1.5" />
                 </div>
               </div>
             </Card>
@@ -104,7 +161,7 @@ export function ResumePage() {
             >
               <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={resumeAnalysis.sections} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                  <BarChart data={sectionData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="sectionFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#6366f1" />
@@ -130,7 +187,7 @@ export function ResumePage() {
             <h2 className="text-base font-semibold">Detected Skills</h2>
             <p className="mt-1 text-sm text-muted-foreground">Extracted from your projects, experience and skills section.</p>
             <div className="mt-5 flex flex-wrap gap-2">
-              {resumeAnalysis.detectedSkills.map((skill) => (
+              {analysis?.detectedSkills.map((skill: string) => (
                 <SkillBadge key={skill} name={skill} />
               ))}
             </div>
@@ -139,8 +196,7 @@ export function ResumePage() {
           <div className="grid gap-5 md:grid-cols-2">
             <Card className="p-6">
               <h2 className="text-base font-semibold">Resume Strengths</h2>
-              <ul className="mt-4 space-y-3">
-                {resumeAnalysis.strengths.map((item) => (
+              <ul className="mt-4 space-y-3">{analysis?.strengths.map((item: string) => (
                   <li key={item} className="flex items-start gap-3 rounded-xl bg-emerald-50/60 px-4 py-3">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                     <span className="text-sm text-foreground/80">{item}</span>
@@ -152,7 +208,7 @@ export function ResumePage() {
             <Card className="p-6">
               <h2 className="text-base font-semibold">Areas to Improve</h2>
               <ul className="mt-4 space-y-3">
-                {resumeAnalysis.improvements.map((item) => (
+                {analysis?.improvements.map((item: string) => (
                   <li key={item} className="flex items-start gap-3 rounded-xl bg-amber-50/70 px-4 py-3">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                     <span className="text-sm text-foreground/80">{item}</span>
@@ -164,7 +220,7 @@ export function ResumePage() {
 
           <AIRecommendationCard
             title="AI Suggestions"
-            message={resumeAnalysis.aiSummary}
+           message={analysis?.aiSummary ?? 'AI analysis completed.'}
             action={
               <Button onClick={() => setImproveOpen(true)}>
                 Improve My Resume <ArrowRight className="h-4 w-4" />

@@ -88,7 +88,7 @@ Deno.serve(async (request) => {
   if (!upload.bytes.byteLength) return json({ error: 'This PDF is empty. Please upload a resume that contains readable text.', code: 'empty_pdf' }, 400)
   if (upload.bytes.byteLength > MAX_RESUME_BYTES) return json({ error: 'This PDF is larger than 5 MB. Choose a smaller resume file.', code: 'file_too_large' }, 413)
   const type = upload.type.split(';')[0].trim().toLowerCase()
-  if (type !== 'application/pdf') {
+  if (type && type !== 'application/pdf' && type !== 'application/octet-stream' && !type.includes('multipart/form-data')) {
     return json({ error: 'Please upload a PDF resume. Other file types are not supported.', code: 'invalid_type' }, 400)
   }
   const header = new TextDecoder('latin1').decode(upload.bytes.slice(0, 8))

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ArrowRight, BriefcaseBusiness, Check, Circle, ExternalLink, GraduationCap, MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Briefcase, GraduationCap, Mail, MapPin, Pencil, Target } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -8,271 +8,91 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Modal } from '@/components/ui/modal'
 import { Progress } from '@/components/ui/progress'
+import { Select } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/common/PageHeader'
 import { ProfileAvatar } from '@/components/common/ProfileAvatar'
-import { SkillBadge } from '@/components/common/SkillBadge'
 import { useToast } from '@/components/common/Toast'
-import { supabase } from '@/lib/supabase'
+import { addProject, addSkill, calculateProfileStrength, deleteProject, deleteSkill, getProfile, SKILL_CATEGORIES, updateProfile, updateSkill, type ProfileBundle } from '@/lib/profileService'
+
+const emptyDraft = { name: '', location: '', graduationYear: '', education: '', branch: '', summary: '', targetRole: '', goal: '', workPreference: '', industry: '' }
+const emptyProject = { name: '', description: '', technologies: '', githubUrl: '', liveUrl: '', projectType: '' }
+const strengthLabels: Record<string, string> = { basic: 'Basic profile', role: 'Target role', skills: 'Skills', resume: 'Resume', education: 'Education', projects: 'Projects / experience', preferences: 'Career preferences' }
 
 export function ProfilePage() {
   const { toast } = useToast()
-  const [editing, setEditing] = useState(false)
+  const [data, setData] = useState<ProfileBundle | null>(null)
   const [loading, setLoading] = useState(true)
-  const [profile, setProfile] = useState<any>({
-    name: '',
-    email: '',
-    location: '',
-    targetRole: '',
-    education: '',
-    branch: '',
-    graduationYear: '',
-    experience: '',
-    workPreference: '',
-    industry: '',
-    goal: ''
-  })
-  const [skills, setSkills] = useState<any[]>([])
-  const [stats, setStats] = useState<any>(null)
-  const [draft, setDraft] = useState(profile)
+  const [error, setError] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [draft, setDraft] = useState(emptyDraft)
+  const [skillName, setSkillName] = useState('')
+  const [skillCategory, setSkillCategory] = useState<string>('Tools')
+  const [skillLevel, setSkillLevel] = useState('60')
+  const [projectOpen, setProjectOpen] = useState(false)
+  const [projectSaving, setProjectSaving] = useState(false)
+  const [project, setProject] = useState(emptyProject)
 
-  const loadProfileData = async () => {
-    try {
-      const sessionRes = await supabase.auth.getSession()
-      const token = sessionRes.data.session?.access_token
-      if (!token) return
-
-      const response = await fetch('/api/profile', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (response.ok) {
-        const data = await response.json()
-        const userEmail = sessionRes.data.session?.user?.email || ''
-        const loadedProfile = {
-          name: data.profile?.name || '',
-          email: userEmail,
-          location: data.profile?.location || '',
-          targetRole: data.goal?.target_role || '',
-          education: data.profile?.education || '',
-          branch: data.profile?.branch || '',
-          graduationYear: data.profile?.graduation_year || '',
-          experience: data.profile?.experience || '',
-          workPreference: data.goal?.work_preference || '',
-          industry: data.preferences?.preferred_industries || '',
-          goal: data.goal?.goal_description || ''
-        }
-        setProfile(loadedProfile)
-        setDraft(loadedProfile)
-        setSkills(data.skills || [])
-      }
-
-      const statsRes = await fetch('/api/dashboard-stats', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (statsRes.ok) {
-        const statsData = await statsRes.json()
-        setStats(statsData)
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
+  const refresh = async () => {
+    setError('')
+    try { setData(await getProfile()) } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Profile data could not be loaded.') } finally { setLoading(false) }
   }
+  useEffect(() => { void refresh() }, [])
 
-  useEffect(() => {
-    void loadProfileData()
-  }, [])
-
+  const strength = useMemo(() => data ? calculateProfileStrength(data) : null, [data])
+  const beginEdit = () => {
+    if (!data) return
+    setDraft({ name: data.profile.name ?? '', location: data.profile.location ?? '', graduationYear: data.profile.graduation_year ?? '', education: data.profile.education ?? '', branch: data.profile.branch ?? '', summary: data.profile.experience ?? '', targetRole: data.goal?.target_role ?? '', goal: data.goal?.goal_description ?? '', workPreference: data.goal?.work_preference ?? '', industry: data.preferences?.preferred_industries ?? '' })
+    setEditing(true)
+  }
   const save = async () => {
-    try {
-      const sessionRes = await supabase.auth.getSession()
-      const token = sessionRes.data.session?.access_token
-      if (!token) throw new Error('Session expired.')
-
-      const response = await fetch('/api/profile', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(draft)
-      })
-
-      if (!response.ok) throw new Error('Failed to update profile.')
-      
-      setProfile(draft)
-      setEditing(false)
-      toast({ title: 'Profile updated', description: 'Your matches will refresh shortly.', tone: 'success' })
-      void loadProfileData()
-    } catch (err) {
-      console.error(err)
-      toast({ title: 'Update failed', description: 'Could not save profile details.', tone: 'info' })
-    }
+    setSaving(true)
+    try { await updateProfile(draft); await refresh(); setEditing(false); toast({ title: 'Profile updated', description: 'Your career tools now use the updated profile.', tone: 'success' }) } catch (saveError) { toast({ title: 'Update failed', description: saveError instanceof Error ? saveError.message : 'Profile could not be saved.', tone: 'error' }) } finally { setSaving(false) }
   }
+  const changeSkill = async (id: number, value: number) => { try { await updateSkill(id, value); await refresh() } catch (skillError) { toast({ title: 'Skill update failed', description: skillError instanceof Error ? skillError.message : 'Please try again.', tone: 'error' }) } }
+  const removeSkill = async (id: number, name: string) => { if (!window.confirm(`Remove ${name} from your profile?`)) return; try { await deleteSkill(id); await refresh() } catch (skillError) { toast({ title: 'Skill removal failed', description: skillError instanceof Error ? skillError.message : 'Please try again.', tone: 'error' }) } }
+  const createSkill = async () => { try { await addSkill(skillName, skillCategory, Number(skillLevel)); setSkillName(''); await refresh(); toast({ title: 'Skill added', tone: 'success' }) } catch (skillError) { toast({ title: 'Could not add skill', description: skillError instanceof Error ? skillError.message : 'Please try again.', tone: 'error' }) } }
+  const createProject = async () => { setProjectSaving(true); try { await addProject({ ...project, technologies: project.technologies.split(',').map((item) => item.trim()).filter(Boolean) }); setProject(emptyProject); setProjectOpen(false); await refresh(); toast({ title: 'Project added', tone: 'success' }) } catch (projectError) { toast({ title: 'Could not add project', description: projectError instanceof Error ? projectError.message : 'Please try again.', tone: 'error' }) } finally { setProjectSaving(false) } }
+  const removeProject = async (id: number, name: string) => { if (!window.confirm(`Remove ${name} from your profile?`)) return; try { await deleteProject(id); await refresh(); toast({ title: 'Project removed', tone: 'info' }) } catch (projectError) { toast({ title: 'Could not remove project', description: projectError instanceof Error ? projectError.message : 'Please try again.', tone: 'error' }) } }
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Profile"
-        description="The details CareerAI uses to personalize your roadmap and job matches."
-        actions={
-          <Button
-            variant="outline"
-            onClick={() => {
-              setDraft(profile)
-              setEditing(true)
-            }}
-          >
-            <Pencil className="h-4 w-4" />
-            Edit profile
-          </Button>
-        }
-      />
+  if (loading) return <div className="space-y-5"><Skeleton className="h-44 w-full" /><div className="grid gap-5 lg:grid-cols-2"><Skeleton className="h-72" /><Skeleton className="h-72" /></div></div>
+  if (error || !data || !strength) return <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{error || 'Profile data is not available.'}</div>
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading profile details...</p>
-      ) : (
-        <>
-          <Card className="relative overflow-hidden">
-            <div className="h-28 bg-brand-gradient" />
-            <div className="px-6 pb-6">
-              <div className="-mt-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div className="flex items-end gap-4">
-                  <ProfileAvatar initials={profile.name ? profile.name.split(' ').map((n: string) => n[0]).join('') : 'U'} size="xl" />
-                  <div className="pb-1">
-                    <h2 className="text-xl font-bold">{profile.name || 'Anonymous User'}</h2>
-                    <p className="text-sm text-muted-foreground">{profile.education || 'Student'} {profile.branch ? `· ${profile.branch}` : ''}</p>
-                  </div>
-                </div>
-                <Badge variant="gradient" className="w-fit px-3 py-1.5">
-                  {stats?.resumeScore ? `${stats.resumeScore}% resume ready` : 'No resume uploaded'}
-                </Badge>
-              </div>
+  const displayName = data.profile.name || 'Your profile'
+  const initials = displayName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'U'
+  const educationTitle = data.profile.education || 'Degree not added'
+  const qualityItems = [['Target role available', Boolean(data.goal?.target_role)], ['Skills available', data.skills.length > 0], ['Resume analyzed', Boolean(data.resume)], ['Education available', Boolean(data.profile.education || data.profile.branch || data.profile.graduation_year)], ['Location added', Boolean(data.profile.location)], ['Projects added', data.projects.length > 0]] as const
+  const focusIncomplete = (key: string) => { const target = key === 'basic' ? 'summary' : key; document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); if (['basic', 'role', 'education', 'preferences'].includes(key)) beginEdit() }
 
-              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  { icon: Mail, label: 'Email', value: profile.email || '—' },
-                  { icon: MapPin, label: 'Location', value: profile.location || '—' },
-                  { icon: GraduationCap, label: 'Graduating', value: profile.graduationYear || '—' },
-                  { icon: Target, label: 'Target role', value: profile.targetRole || '—' },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-xl border border-border bg-muted/40 p-4">
-                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <item.icon className="h-3.5 w-3.5" />
-                      {item.label}
-                    </p>
-                    <p className="mt-1 truncate text-sm font-medium">{item.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
+  return <div className="space-y-6">
+    <PageHeader title="Professional Profile" description="The verified information CareerAI uses for recommendations, matching, and interviews." actions={<Button onClick={beginEdit}><Pencil className="h-4 w-4" />Edit Profile</Button>} />
+    <Card id="header" className="overflow-hidden"><div className="h-24 bg-brand-gradient" /><div className="px-5 pb-6 sm:px-7"><div className="-mt-10 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div className="flex items-end gap-4"><ProfileAvatar initials={initials} size="xl" status /><div className="pb-1"><h2 className="text-2xl font-bold">{displayName}</h2><p className="mt-1 text-sm text-muted-foreground">{data.goal?.target_role || 'Target role not added'}</p>{data.profile.experience ? <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{data.profile.experience}</p> : null}</div></div><div className="w-full sm:max-w-xs"><div className="flex justify-between text-xs font-semibold"><span>Profile strength</span><span className="text-primary">{strength.total}%</span></div><Progress value={strength.total} className="mt-2 h-2" /><p className="mt-2 text-xs text-muted-foreground">{strength.completed} of 7 sections complete</p></div></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><InfoItem icon={MapPin} label="Location" value={data.profile.location || 'Not added yet'} /><InfoItem icon={BriefcaseBusiness} label="Work preference" value={data.goal?.work_preference || 'Not added yet'} /><InfoItem icon={GraduationCap} label="Education" value={educationTitle} /></div></div></Card>
+    <div className="grid gap-6 lg:grid-cols-[1.3fr_.7fr]"><Card id="summary" className="p-6"><SectionTitle title="Professional Summary" description="A summary from your saved profile information." action={<Button size="sm" variant="outline" onClick={beginEdit}><Pencil className="h-3.5 w-3.5" />Edit</Button>} /><p className="mt-5 text-sm leading-7 text-muted-foreground">{data.profile.experience || 'Add a professional summary to help CareerAI personalize your recommendations.'}</p></Card><Card id="strength" className="p-6"><SectionTitle title="Profile Strength" description="Completion is calculated from real persisted data." /><p className="mt-4 text-3xl font-bold text-primary">{strength.total}%</p><Progress value={strength.total} className="mt-3" /><p className="mt-2 text-xs text-muted-foreground">Completed sections: {strength.completed} / 7</p><div className="mt-5 space-y-3">{Object.entries(strength.sections).map(([key, value]) => <button key={key} type="button" onClick={() => !value && focusIncomplete(key)} className={`flex w-full items-center justify-between gap-3 text-left text-sm ${value ? '' : 'cursor-pointer hover:text-primary'}`}><span className="flex items-center gap-2"><span className={value ? 'text-emerald-600' : 'text-muted-foreground'}>{value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}</span>{strengthLabels[key]}</span><span className="text-xs text-muted-foreground">{value ? 'Complete' : 'Add now'}</span></button>)}</div><Button className="mt-5 w-full" variant="outline" onClick={() => focusIncomplete(strength.missing[0] || 'summary')}>Complete Profile <ArrowRight className="h-4 w-4" /></Button></Card></div>
+    <Card id="career" className="p-6"><SectionTitle title="Career Information" description="Your persisted direction is shared across Skill Gap, Roadmap, Jobs, and Interviews." action={<Button size="sm" variant="outline" onClick={beginEdit}><Pencil className="h-3.5 w-3.5" />Edit Career Information</Button>} /><div className="mt-5 grid gap-5 sm:grid-cols-3"><Field label="Target role" value={data.goal?.target_role} /><Field label="Career goal" value={data.goal?.goal_description} /><Field label="Work preference" value={data.goal?.work_preference} /></div></Card>
+    <Card id="skills" className="p-6"><SectionTitle title="Skills" description="Verified skills associated with your profile." action={<Badge variant="secondary">{data.skills.length} saved</Badge>} /><div className="mt-5 grid gap-3 md:grid-cols-2">{data.skills.map((skill) => <div key={skill.id} className="rounded-lg border border-border p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{skill.name}</p><p className="mt-1 text-xs text-muted-foreground">{skill.category} · Saved skill</p></div><div className="flex items-center gap-2"><span className="text-sm font-semibold">{skill.proficiency}%</span><Button size="icon" variant="ghost" aria-label={`Delete ${skill.name}`} onClick={() => void removeSkill(skill.id, skill.name)}><Trash2 className="h-3.5 w-3.5" /></Button></div></div><input aria-label={`Proficiency for ${skill.name}`} type="range" min="0" max="100" value={skill.proficiency} onChange={(event) => void changeSkill(skill.id, Number(event.target.value))} className="mt-3 w-full accent-primary" /><Progress value={skill.proficiency} className="mt-2 h-1.5" /></div>)}{!data.skills.length ? <Empty text="No verified skills saved yet." /> : null}</div><div className="mt-6 border-t border-border pt-5"><p className="font-semibold">Add a skill</p><div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_120px_auto]"><div><Label htmlFor="skill-name">Skill</Label><Input id="skill-name" value={skillName} onChange={(event) => setSkillName(event.target.value)} placeholder="Search or select skill" /></div><div><Label htmlFor="skill-category">Category</Label><Select id="skill-category" value={skillCategory} onChange={(event) => setSkillCategory(event.target.value)}>{SKILL_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</Select></div><div><Label htmlFor="skill-level">Proficiency</Label><Input id="skill-level" type="number" min="0" max="100" value={skillLevel} onChange={(event) => setSkillLevel(event.target.value)} /></div><Button className="self-end" onClick={() => void createSkill()} disabled={!skillName.trim()}>Add Skill</Button></div></div></Card>
+    <div className="grid gap-6 lg:grid-cols-2"><Card id="resume" className="p-6"><SectionTitle title="Resume" description="Your latest persisted resume analysis." />{data.resume ? <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50/60 p-4"><p className="flex items-center gap-2 text-sm font-semibold text-emerald-800"><Check className="h-4 w-4" />Analysis available</p><p className="mt-3 text-sm font-semibold">{data.resume.filename}</p><p className="mt-1 text-xs text-muted-foreground">Last analyzed {new Date(data.resume.created_at).toLocaleDateString()}</p><Button asChild variant="outline" size="sm" className="mt-4"><Link to="/resume-analyzer">View or replace resume <ArrowRight className="h-3.5 w-3.5" /></Link></Button></div> : <Empty text="No resume analyzed yet." action={<Button asChild size="sm"><Link to="/resume-analyzer">Analyze Resume</Link></Button>} />}</Card><Card id="education" className="p-6"><SectionTitle title="Education" description="Academic information kept separate from technical skills." action={<Button size="sm" variant="outline" onClick={beginEdit}><Pencil className="h-3.5 w-3.5" />Edit Education</Button>} />{data.profile.education || data.profile.branch || data.profile.graduation_year ? <div className="mt-5 rounded-lg border border-border p-4"><div className="flex gap-3"><GraduationCap className="mt-0.5 h-5 w-5 text-primary" /><div><p className="font-semibold">{educationTitle}</p>{data.profile.branch ? <p className="mt-1 text-sm text-muted-foreground">{data.profile.branch}</p> : null}{data.profile.graduation_year ? <p className="mt-3 text-xs text-muted-foreground">Expected graduation: {data.profile.graduation_year}</p> : null}</div></div></div> : <Empty text="Education information not added yet." action={<Button size="sm" variant="outline" onClick={beginEdit}>Add Education</Button>} />}</Card></div>
+    <Card id="projects" className="p-6"><SectionTitle title="Projects & Experience" description="Only real portfolio evidence saved to your profile is shown." action={<Button size="sm" onClick={() => setProjectOpen(true)}><Plus className="h-4 w-4" />Add Project</Button>} />{data.projects.length ? <div className="mt-5 grid gap-4 md:grid-cols-2">{data.projects.map((item) => <div key={item.id} className="rounded-lg border border-border p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{item.name}</h3><p className="mt-1 text-xs text-muted-foreground">{item.projectType || 'Project'}</p></div><Button size="icon" variant="ghost" aria-label={`Delete ${item.name}`} onClick={() => void removeProject(item.id, item.name)}><Trash2 className="h-3.5 w-3.5" /></Button></div><p className="mt-3 text-sm leading-6 text-muted-foreground">{item.description}</p><div className="mt-3 flex flex-wrap gap-1.5">{item.technologies.map((technology) => <Badge key={technology} variant="secondary">{technology}</Badge>)}</div><div className="mt-4 flex gap-3 text-xs">{item.githubUrl ? <a className="inline-flex items-center gap-1 text-primary" href={item.githubUrl} target="_blank" rel="noreferrer">GitHub <ExternalLink className="h-3 w-3" /></a> : null}{item.liveUrl ? <a className="inline-flex items-center gap-1 text-primary" href={item.liveUrl} target="_blank" rel="noreferrer">Live demo <ExternalLink className="h-3 w-3" /></a> : null}</div></div>)}</div> : <div className="mt-5 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground"><p>No projects added yet.</p><p className="mt-1">Add projects to strengthen your CareerAI profile.</p><Button className="mt-4" size="sm" onClick={() => setProjectOpen(true)}><Plus className="h-4 w-4" />Add Project</Button></div>}</Card>
+    <div className="grid gap-6 lg:grid-cols-2"><Card id="preferences" className="p-6"><SectionTitle title="Work Preferences" description="Saved preferences used for career recommendations." action={<Button size="sm" variant="outline" onClick={beginEdit}><Pencil className="h-3.5 w-3.5" />Edit Preferences</Button>} /><div className="mt-5 space-y-4"><Field label="Work preference" value={data.goal?.work_preference || data.preferences?.preferred_work_mode} /><Field label="Industry preference" value={data.preferences?.preferred_industries} /><Field label="Location" value={data.profile.location} /></div></Card><Card id="quality" className="p-6"><SectionTitle title="Profile Data Quality" description="Informational checks based on persisted data." /><div className="mt-5 grid gap-3 sm:grid-cols-2">{qualityItems.map(([label, complete]) => <div key={label} className="flex items-center gap-2 text-sm"><span className={complete ? 'text-emerald-600' : 'text-muted-foreground'}>{complete ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}</span><span>{complete ? label : `${label.replace(' available', '').replace(' added', '')} not added`}</span></div>)}</div></Card></div>
+    <ProfileEditModal open={editing} draft={draft} saving={saving} onOpenChange={setEditing} onDraftChange={setDraft} onSave={() => void save()} />
+    <ProjectModal open={projectOpen} project={project} saving={projectSaving} onOpenChange={setProjectOpen} onProjectChange={setProject} onSave={() => void createProject()} />
+  </div>
+}
 
-          <div className="grid gap-5 lg:grid-cols-3">
-            <Card className="p-6 lg:col-span-2">
-              <h2 className="text-base font-semibold">Skills</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Proficiency scored from your profile, roadmap and interviews.</p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                {skills.map((skill) => (
-                  <SkillBadge key={skill.id || skill.name} name={skill.name} level={skill.proficiency} />
-                ))}
-                {skills.length === 0 ? <p className="text-sm text-muted-foreground">No skills saved yet.</p> : null}
-              </div>
-              <div className="mt-7 space-y-4">
-                {skills.slice(0, 4).map((skill) => (
-                  <div key={skill.id || skill.name}>
-                    <div className="mb-1.5 flex justify-between text-xs">
-                      <span className="text-muted-foreground">{skill.name}</span>
-                      <span className="font-semibold">{skill.proficiency}%</span>
-                    </div>
-                    <Progress value={skill.proficiency} className="h-1.5" />
-                  </div>
-                ))}
-              </div>
-            </Card>
+function SectionTitle({ title, description, action }: { title: string; description: string; action?: ReactNode }) { return <div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-semibold">{title}</h2><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>{action}</div> }
+function InfoItem({ icon: Icon, label, value }: { icon: typeof BriefcaseBusiness; label: string; value: string }) { return <div className="rounded-lg border border-border bg-muted/30 p-4"><p className="flex items-center gap-2 text-xs text-muted-foreground"><Icon className="h-3.5 w-3.5" />{label}</p><p className="mt-2 truncate text-sm font-semibold">{value}</p></div> }
+function Field({ label, value, empty = 'Not added yet' }: { label: string; value?: string | null; empty?: string }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-medium">{value || empty}</p></div> }
+function Empty({ text, action }: { text: string; action?: ReactNode }) { return <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground md:col-span-2"><p>{text}</p>{action ? <div className="mt-3">{action}</div> : null}</div> }
 
-            <div className="space-y-5">
-              <Card className="p-6">
-                <h2 className="text-base font-semibold">Career goal</h2>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{profile.goal || 'Land a target developer role within 6 months.'}</p>
-                <div className="mt-5 space-y-3 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Briefcase className="h-4 w-4" />
-                    {profile.workPreference || 'Hybrid'} · {profile.industry || 'Tech'}
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <GraduationCap className="h-4 w-4" />
-                    {profile.education || 'B.Tech'} {profile.branch ? `in ${profile.branch}` : ''}
-                  </div>
-                </div>
-                <Button asChild variant="outline" className="mt-5 w-full">
-                  <Link to="/roadmap">
-                    View roadmap <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </Card>
+function ProfileEditModal({ open, draft, saving, onOpenChange, onDraftChange, onSave }: { open: boolean; draft: typeof emptyDraft; saving: boolean; onOpenChange: (open: boolean) => void; onDraftChange: (draft: typeof emptyDraft) => void; onSave: () => void }) {
+  const update = (key: keyof typeof emptyDraft, value: string) => onDraftChange({ ...draft, [key]: value })
+  return <Modal className="max-h-[calc(100vh-2rem)] overflow-y-auto" open={open} onOpenChange={onOpenChange} title="Edit Profile" description="Update your personal, career, education, professional, and preference information." footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={onSave} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button></>}><div className="space-y-5 pr-1"><FormGroup title="Personal"><TextField id="profile-name" label="Full name" value={draft.name} onChange={(value) => update('name', value)} /><TextField id="profile-location" label="Location" value={draft.location} onChange={(value) => update('location', value)} /></FormGroup><FormGroup title="Career"><TextField id="profile-role" label="Target role" value={draft.targetRole} onChange={(value) => update('targetRole', value)} /><TextField id="profile-goal" label="Career goal" value={draft.goal} onChange={(value) => update('goal', value)} /><div><Label htmlFor="profile-work">Work preference</Label><Select id="profile-work" className="mt-1" value={draft.workPreference} onChange={(event) => update('workPreference', event.target.value)}><option value="">Choose work preference</option><option>Remote</option><option>Hybrid</option><option>On-site</option></Select></div></FormGroup><FormGroup title="Education"><TextField id="profile-degree" label="Degree" value={draft.education} onChange={(value) => update('education', value)} /><TextField id="profile-branch" label="Specialization" value={draft.branch} onChange={(value) => update('branch', value)} /><TextField id="profile-graduation" label="Graduation year" value={draft.graduationYear} onChange={(value) => update('graduationYear', value)} /></FormGroup><FormGroup title="Professional"><div className="sm:col-span-2"><Label htmlFor="profile-summary">Professional summary</Label><textarea id="profile-summary" value={draft.summary} onChange={(event) => update('summary', event.target.value)} className="mt-1 flex min-h-24 w-full rounded-lg border border-input bg-white px-3.5 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10" /></div></FormGroup><FormGroup title="Preferences"><TextField id="profile-industry" label="Industry preference" value={draft.industry} onChange={(value) => update('industry', value)} /></FormGroup></div></Modal>
+}
 
-              <Card className="p-6">
-                <h2 className="text-base font-semibold">Profile strength</h2>
-                <div className="mt-4 space-y-4">
-                  {[
-                    { label: 'Resume uploaded', value: stats?.latestResumeAnalysis ? 100 : 0 },
-                    { label: 'Skills added', value: skills.length > 0 ? 100 : 0 },
-                    { label: 'Mock interviews', value: stats?.interviewHistory?.length ? 100 : 0 },
-                    { label: 'Projects linked', value: stats?.latestResumeAnalysis?.projects?.length ? 100 : 0 },
-                  ].map((item) => (
-                    <div key={item.label}>
-                      <div className="mb-1.5 flex justify-between text-xs">
-                        <span className="text-muted-foreground">{item.label}</span>
-                        <span className="font-semibold">{item.value}%</span>
-                      </div>
-                      <Progress value={item.value} className="h-1.5" />
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-          </div>
-        </>
-      )}
+function FormGroup({ title, children }: { title: string; children: ReactNode }) { return <fieldset className="space-y-3 border-t border-border pt-4 first:border-t-0 first:pt-0"><legend className="mb-2 text-sm font-semibold">{title}</legend><div className="grid gap-3 sm:grid-cols-2">{children}</div></fieldset> }
+function TextField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: string) => void }) { return <div><Label htmlFor={id}>{label}</Label><Input id={id} className="mt-1" value={value} onChange={(event) => onChange(event.target.value)} /></div> }
 
-      <Modal
-        open={editing}
-        onOpenChange={setEditing}
-        title="Edit profile"
-        description="Changes apply to your matches and roadmap immediately."
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-            <Button onClick={save}>Save changes</Button>
-          </>
-        }
-      >
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-          {[
-            { id: 'name', label: 'Full name' },
-            { id: 'location', label: 'Location' },
-            { id: 'targetRole', label: 'Target role' },
-            { id: 'education', label: 'Degree (e.g. B.Tech)' },
-            { id: 'branch', label: 'Branch / Specialization' },
-            { id: 'graduationYear', label: 'Graduation Year' },
-            { id: 'goal', label: 'Career goal description' },
-            { id: 'workPreference', label: 'Work preference (Remote/Hybrid/On-site)' },
-            { id: 'industry', label: 'Preferred industry' }
-          ].map((field) => (
-            <div key={field.id} className="space-y-1.5">
-              <Label htmlFor={field.id}>{field.label}</Label>
-              <Input
-                id={field.id}
-                value={draft[field.id as keyof typeof draft] || ''}
-                onChange={(event) => setDraft({ ...draft, [field.id]: event.target.value })}
-              />
-            </div>
-          ))}
-        </div>
-      </Modal>
-    </div>
-  )
+function ProjectModal({ open, project, saving, onOpenChange, onProjectChange, onSave }: { open: boolean; project: typeof emptyProject; saving: boolean; onOpenChange: (open: boolean) => void; onProjectChange: (project: typeof emptyProject) => void; onSave: () => void }) {
+  const update = (key: keyof typeof emptyProject, value: string) => onProjectChange({ ...project, [key]: value })
+  return <Modal open={open} onOpenChange={onOpenChange} title="Add Project" description="Add real portfolio evidence to your profile." footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={onSave} disabled={saving}>{saving ? 'Saving...' : 'Add Project'}</Button></>}><div className="space-y-4"><TextField id="project-name" label="Project name" value={project.name} onChange={(value) => update('name', value)} /><TextField id="project-description" label="Description" value={project.description} onChange={(value) => update('description', value)} /><TextField id="project-technologies" label="Technologies (comma separated)" value={project.technologies} onChange={(value) => update('technologies', value)} /><TextField id="project-type" label="Role or project type" value={project.projectType} onChange={(value) => update('projectType', value)} /><div className="grid gap-4 sm:grid-cols-2"><TextField id="project-github" label="GitHub URL" value={project.githubUrl} onChange={(value) => update('githubUrl', value)} /><TextField id="project-live" label="Live URL" value={project.liveUrl} onChange={(value) => update('liveUrl', value)} /></div></div></Modal>
 }

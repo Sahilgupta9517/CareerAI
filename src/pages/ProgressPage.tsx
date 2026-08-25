@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import { PageHeader } from '@/components/common/PageHeader'
 import { ProgressRing } from '@/components/common/ProgressRing'
 import { supabase } from '@/lib/supabase'
+import { fetchApi } from '@/lib/apiClient'
 
 type ProgressData = {
   profile: { name: string | null; location: string | null }
@@ -58,13 +59,7 @@ export function ProgressPage() {
         
         const token = sessionResult.data.session?.access_token
         if (token) {
-          const statsRes = await fetch('/api/dashboard-stats', {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-          if (statsRes.ok) {
-            const statsData = await statsRes.json()
-            setStats(statsData)
-          }
+          setStats(await fetchApi('/api/dashboard-stats', { headers: { Authorization: `Bearer ${token}` } }, 'Progress stats'))
         }
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'We could not load your progress.')

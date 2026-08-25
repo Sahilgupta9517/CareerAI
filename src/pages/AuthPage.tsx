@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, Phone, Sparkles, User } from 'lucide-react'
+import { ArrowRight, Check, Eye, EyeOff, Loader2, Lock, Mail, Phone, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Logo } from '@/components/common/Logo'
 import { useToast } from '@/components/common/Toast'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
-import { metrics, student } from '@/data/mock'
 
 interface AuthPageProps {
   mode: 'login' | 'signup'
 }
 
 const highlights = [
-  { label: 'Career readiness', value: `${metrics.careerReadiness}%`, caption: 'average after 12 weeks' },
-  { label: 'Resume score', value: `${metrics.resumeScore}/100`, caption: 'AI-reviewed in seconds' },
-  { label: 'Job matches', value: '3 new', caption: 'refreshed every morning' },
+  'AI-powered career analysis',
+  'Personalized skill-gap insights',
+  'Smart job matching',
+  'Practice with AI mock interviews',
 ]
 
 export function AuthPage({ mode }: AuthPageProps) {
@@ -25,6 +25,7 @@ export function AuthPage({ mode }: AuthPageProps) {
   const { toast } = useToast()
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' })
   const isSignup = mode === 'signup'
@@ -125,37 +126,52 @@ export function AuthPage({ mode }: AuthPageProps) {
     }
   }
 
+  const handlePasswordReset = async () => {
+    if (!form.email.trim()) {
+      setErrorMessage('Enter your email address first.')
+      return
+    }
+    if (!isSupabaseConfigured) {
+      setErrorMessage('Supabase is not configured. Please try again later.')
+      return
+    }
+    setResetting(true)
+    setErrorMessage('')
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(form.email.trim(), { redirectTo: `${window.location.origin}/login` })
+      if (error) throw error
+      toast({ title: 'Reset email sent', description: 'Check your inbox for a password reset link.', tone: 'info' })
+    } catch (resetError) {
+      setErrorMessage(resetError instanceof Error ? 'We could not send a reset email. Please try again.' : 'We could not send a reset email. Please try again.')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-brand-gradient p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div className="pointer-events-none absolute inset-0 opacity-25 grid-bg" />
         <div className="pointer-events-none absolute -bottom-24 -left-16 h-80 w-80 rounded-full bg-white/10 blur-3xl" />
-        <Link to="/landing" className="relative flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 backdrop-blur">
-            <Sparkles className="h-[18px] w-[18px]" />
-          </div>
-          <span className="text-[17px] font-bold">CareerAI</span>
-        </Link>
+        <Link to="/landing" className="relative"><Logo light tagline /></Link>
 
         <div className="relative max-w-md">
-          <h2 className="text-4xl font-bold leading-tight">Your personalized career journey starts here.</h2>
-          <p className="mt-4 text-white/80">
-            Resume analysis, skill gaps, roadmaps, job matches and mock interviews — in one intelligent workspace.
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/65">AI-Powered Career Intelligence</p>
+          <h2 className="mt-4 text-4xl font-bold leading-tight">Turn ambition into your next best move.</h2>
+          <p className="mt-4 max-w-lg text-base leading-7 text-white/80">
+            Connect your resume, skills and goals in one focused workspace built to help you move toward the right opportunity.
           </p>
-          <div className="mt-10 space-y-3">
+          <div className="mt-10 grid gap-3 sm:grid-cols-2">
             {highlights.map((item) => (
-              <div key={item.label} className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
-                <div className="flex items-baseline justify-between">
-                  <p className="text-sm text-white/80">{item.label}</p>
-                  <p className="text-lg font-bold">{item.value}</p>
-                </div>
-                <p className="mt-0.5 text-xs text-white/60">{item.caption}</p>
+              <div key={item} className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
+                <Check className="h-4 w-4 shrink-0 text-cyan-200" />
+                <p className="text-sm text-white/90">{item}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="relative text-sm text-white/70">Trusted by 24,000+ students across 180 campuses.</p>
+        <p className="relative text-sm text-white/70">A focused workspace for your next career move.</p>
       </div>
 
       <div className="flex items-center justify-center px-4 py-12 sm:px-8">
@@ -172,7 +188,7 @@ export function AuthPage({ mode }: AuthPageProps) {
           <p className="mt-2 text-sm text-muted-foreground">
             {isSignup
               ? 'Start building a career plan tailored to your goal.'
-              : `Sign in to continue your ${student.targetRole} track.`}
+              : 'Sign in to continue your career journey.'}
           </p>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -184,7 +200,7 @@ export function AuthPage({ mode }: AuthPageProps) {
                   <Input
                     id="name"
                     required
-                    placeholder="Sahil Gupta"
+                    placeholder="Your full name"
                     className="pl-10"
                     value={form.name}
                     onChange={(event) => setForm({ ...form, name: event.target.value })}
@@ -273,15 +289,15 @@ export function AuthPage({ mode }: AuthPageProps) {
                   <input type="checkbox" className="h-4 w-4 rounded border-border accent-indigo-600" />
                   Remember me
                 </label>
-                <Link to="/login" className="font-medium text-primary hover:underline">
+                <button type="button" onClick={() => void handlePasswordReset()} disabled={resetting || submitting} className="font-medium text-primary hover:underline disabled:opacity-60">
                   Forgot password?
-                </Link>
+                </button>
               </div>
             )}
 
             <Button type="submit" size="lg" className="w-full" disabled={submitting}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {isSignup ? 'Create Account' : 'Sign In'}
+              {submitting ? (isSignup ? 'Creating account...' : 'Signing in...') : isSignup ? 'Create Account' : 'Sign In'}
               {!submitting ? <ArrowRight className="h-4 w-4" /> : null}
             </Button>
           </form>

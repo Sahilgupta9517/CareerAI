@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { CheckCircle2, Info, Sparkles, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Info, Sparkles, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type ToastTone = 'success' | 'info' | 'ai'
+type ToastTone = 'success' | 'info' | 'ai' | 'error'
 
 interface ToastItem {
   id: number
@@ -18,11 +18,12 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null)
 
-const icons = { success: CheckCircle2, info: Info, ai: Sparkles }
+const icons = { success: CheckCircle2, info: Info, ai: Sparkles, error: AlertCircle }
 const tones = {
   success: 'text-emerald-600 bg-emerald-50',
   info: 'text-sky-600 bg-sky-50',
   ai: 'text-primary bg-primary/10',
+  error: 'text-rose-600 bg-rose-50',
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {

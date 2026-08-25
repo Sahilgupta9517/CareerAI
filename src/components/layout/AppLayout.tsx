@@ -15,7 +15,7 @@ export function AppLayout() {
   }, [location.pathname])
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,.06),transparent_28%),hsl(var(--background))]">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_85%_-10%,rgba(37,99,235,.08),transparent_30%),linear-gradient(180deg,#ffffff_0%,hsl(var(--background))_38%,#f6f8fb_100%)]">
       <Sidebar
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((value) => !value)}
@@ -24,7 +24,7 @@ export function AppLayout() {
       />
       <div className={cn('transition-[padding] duration-300 ease-out', collapsed ? 'lg:pl-[76px]' : 'lg:pl-[264px]')}>
         <Topbar onOpenMobileNav={() => setMobileOpen(true)} />
-        <main key={location.pathname} className="mx-auto w-full max-w-[1360px] animate-fade-in px-4 py-6 sm:px-8 lg:py-9">
+        <main key={location.pathname} className="page-shell animate-fade-in px-4 py-6 sm:px-8 lg:px-12 lg:py-10">
           <Outlet />
         </main>
       </div>

@@ -10,7 +10,7 @@ export type UploadState = 'idle' | 'analyzing' | 'done'
 interface ResumeUploadProps {
   state: UploadState
   fileName: string
-  onUpload: (fileName: string) => void
+  onUpload: (file: File) => void
   onReset: () => void
 }
 
@@ -72,7 +72,10 @@ export function ResumeUpload({ state, fileName, onUpload, onReset }: ResumeUploa
         event.preventDefault()
         setDragging(false)
         const dropped = event.dataTransfer.files?.[0]
-        onUpload(dropped?.name ?? resumeAnalysis.fileName)
+
+if (dropped) {
+  onUpload(dropped)
+}
       }}
       className={cn(
         'flex flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white px-6 py-14 text-center shadow-soft transition-all duration-300',
@@ -83,7 +86,7 @@ export function ResumeUpload({ state, fileName, onUpload, onReset }: ResumeUploa
         <UploadCloud className="h-8 w-8" />
       </div>
       <h3 className="mt-5 text-lg font-semibold">Drop your resume here</h3>
-      <p className="mt-1.5 text-sm text-muted-foreground">Supported formats: PDF, DOCX — up to 5 MB</p>
+      <p className="mt-1.5 text-sm text-muted-foreground">Supported format: PDF — up to 5 MB</p>
       <Button className="mt-6" onClick={pickFile}>
         <FileText className="h-4 w-4" />
         Choose Resume
@@ -91,9 +94,17 @@ export function ResumeUpload({ state, fileName, onUpload, onReset }: ResumeUploa
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.docx"
+        accept=".pdf,application/pdf"
         className="hidden"
-        onChange={(event) => onUpload(event.target.files?.[0]?.name ?? resumeAnalysis.fileName)}
+        onChange={(event) => {
+  const file = event.target.files?.[0]
+
+  if (file) {
+    onUpload(file)
+  }
+
+  event.target.value = ''
+}}
       />
       <p className="mt-4 text-xs text-muted-foreground">Your resume is analysed privately and never shared.</p>
     </div>
