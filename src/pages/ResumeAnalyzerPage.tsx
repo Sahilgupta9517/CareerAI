@@ -447,17 +447,17 @@ export function ResumeAnalyzerPage() {
         await extractResumeOnServer(candidate)
 
       try {
-        const structuredResume =
+        const persistedExtraction =
           await persistResumeExtraction(result)
 
         const parsedInsight =
           buildInsight(result.text)
 
         const persisted: PersistedResume = {
-          id: 0,
+          id: persistedExtraction.id,
           ...result,
           extractedText: result.text,
-          structuredResume,
+          structuredResume: persistedExtraction.structuredResume,
           createdAt:
             new Date().toISOString(),
           overallScore: null,
@@ -708,6 +708,7 @@ const cleanAiSkills = (skills: string[]): string[] => {
         await analyzeResumeOnServer(
           resumeResult,
           targetRole,
+          persistedResume?.id,
         )
 
      const cleanedResult: ResumeAnalyzeResult = {

@@ -33,11 +33,14 @@ const errorFromBody = (value: unknown, fallback: string) => {
 }
 
 const extractViaLocalService = async (file: File) => {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError || !sessionData.session?.access_token) throw new Error('Your session has expired. Please sign in again.')
   const response = await fetch('/api/resume/extract', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/pdf',
       'X-Filename': encodeURIComponent(file.name),
+      Authorization: `Bearer ${sessionData.session.access_token}`,
     },
     body: file,
   })
@@ -118,7 +121,7 @@ export const persistResumeExtraction = async (result: ResumeExtractResult) => {
     ai_summary: null,
   }
 
-  const { error } = await supabase.from('resume_analyses').insert(insertPayload)
+  const { data: inserted, error } = await supabase.from('resume_analyses').insert(insertPayload).select('id').single()
   if (error) {
     console.error('[resume/persist] Save failed', {
       message: error.message,
@@ -135,7 +138,7 @@ export const persistResumeExtraction = async (result: ResumeExtractResult) => {
         : error.message || 'Resume extracted successfully, but saving your resume data failed. Please try again.'
     )
   }
-  return structuredResume
+  return { id: inserted.id, structuredResume }
 }
 
 export type ResumeAnalyzeResult = {
@@ -157,6 +160,7 @@ export type ResumeAnalyzeResult = {
 export const analyzeResumeOnServer = async (
   result: ResumeExtractResult,
   targetRole: string,
+  resumeAnalysisId?: number,
 ): Promise<ResumeAnalyzeResult> => {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
   if (sessionError || !sessionData.session?.access_token) throw new Error('Your session has expired. Please sign in again.')
@@ -174,6 +178,7 @@ export const analyzeResumeOnServer = async (
       fileSize: result.fileSize,
       pageCount: result.pageCount,
       characterCount: result.characterCount,
+      resumeAnalysisId,
     }),
   })
   const payload = await response.json().catch(() => null) as Partial<ResumeAnalyzeResult> & { error?: string; dbError?: string } | null

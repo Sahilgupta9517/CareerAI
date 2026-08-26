@@ -19,7 +19,7 @@ export function SkillBadge({ name, selected, onClick, level, className }: SkillB
         'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
         selected
           ? 'border-transparent bg-brand-gradient text-white shadow-lift'
-          : 'border-border bg-white text-foreground/80',
+          : 'border-border bg-secondary/70 text-foreground/80',
         interactive && !selected && 'hover:-translate-y-0.5 hover:border-primary/40 hover:text-primary',
         interactive && selected && 'hover:brightness-105',
         className,

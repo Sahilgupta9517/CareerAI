@@ -20,10 +20,10 @@ const ToastContext = createContext<ToastContextValue | null>(null)
 
 const icons = { success: CheckCircle2, info: Info, ai: Sparkles, error: AlertCircle }
 const tones = {
-  success: 'text-emerald-600 bg-emerald-50',
-  info: 'text-sky-600 bg-sky-50',
+  success: 'text-emerald-300 bg-emerald-500/15',
+  info: 'text-cyan-300 bg-cyan-500/15',
   ai: 'text-primary bg-primary/10',
-  error: 'text-rose-600 bg-rose-50',
+  error: 'text-rose-300 bg-rose-500/15',
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -53,7 +53,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={item.id}
-              className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-border bg-white/95 p-4 shadow-glow backdrop-blur animate-fade-up"
+              className="pointer-events-auto flex items-start gap-3 rounded-xl border border-border bg-card/95 p-4 shadow-glow backdrop-blur animate-fade-up"
             >
               <span className={cn('rounded-lg p-1.5', tones[item.tone])}>
                 <Icon className="h-4 w-4" />

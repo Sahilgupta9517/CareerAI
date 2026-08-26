@@ -57,6 +57,16 @@
 }
 
 @layer utilities {
+  .bg-white { background-color: hsl(var(--card)) !important; }
+  .bg-white\/70, .bg-white\/80, .bg-white\/85, .bg-white\/90 { background-color: rgb(13 32 56 / 0.9) !important; }
+  .bg-emerald-50\/60, .bg-emerald-50\/70 { background-color: rgb(16 185 129 / 0.1) !important; }
+  .bg-amber-50\/60, .bg-amber-50\/70 { background-color: rgb(245 158 11 / 0.1) !important; }
+  .bg-rose-50 { background-color: rgb(244 63 94 / 0.1) !important; }
+  .text-emerald-700, .text-emerald-800 { color: rgb(110 231 183) !important; }
+  .text-amber-700, .text-amber-800, .text-amber-900 { color: rgb(252 211 77) !important; }
+  .text-rose-700 { color: rgb(253 164 175) !important; }
+  input[type='range'] + div { display: none !important; }
+
   /* Gradient text */
   .text-gradient {
     @apply bg-clip-text text-transparent;

@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { extractResumePdf, ResumeExtractError } from './extractResumePdf.ts'
@@ -10,7 +11,7 @@ import { createConfiguredJobProvider, JobProviderError } from './services/jobPro
 // Load environment variables manually from .env.local and .env
 const loadEnvFiles = () => {
   const rootDir = process.cwd()
-  const paths = [path.resolve(rootDir, '.env.local'), path.resolve(rootDir, '.env')]
+  const paths = [path.resolve(rootDir, 'server/.env.local'), path.resolve(rootDir, '.env.local'), path.resolve(rootDir, '.env')]
   for (const envPath of paths) {
     if (fs.existsSync(envPath)) {
       const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/)
@@ -117,6 +118,11 @@ const handleRequest = async (request: IncomingMessage, response: ServerResponse)
     return
   }
 
+  if (url === '/api/resume/extract' && !authHeader) {
+    json(response, 401, { error: 'Authentication is required.' })
+    return
+  }
+
   try {
     if (url === '/api/jobs' && request.method === 'GET') {
       try {
@@ -168,7 +174,7 @@ const handleRequest = async (request: IncomingMessage, response: ServerResponse)
     // 2. POST /api/resume/analyze
     if (url === '/api/resume/analyze' && request.method === 'POST') {
       const body = await readBody(request, 2 * 1024 * 1024)
-      const { text, targetRole, filename, fileSize, pageCount, characterCount } = JSON.parse(body.toString())
+      const { text, targetRole, filename, fileSize, pageCount, characterCount, resumeAnalysisId } = JSON.parse(body.toString())
       if (!text || !targetRole) {
         json(response, 400, { error: 'Missing text or targetRole parameters.' })
         return
@@ -179,9 +185,7 @@ const handleRequest = async (request: IncomingMessage, response: ServerResponse)
 
       // Save to Supabase
       const supabase = getSupabaseClient(authHeader)
-      const { data: inserted, error: insertError } = await supabase
-        .from('resume_analyses')
-        .insert({
+      const resumePayload = {
           user_id: userId,
           profile_id: profile.id,
           filename: filename || 'resume.pdf',
@@ -201,10 +205,12 @@ const handleRequest = async (request: IncomingMessage, response: ServerResponse)
           certifications: analysis.certifications,
           missing_skills: analysis.missingSkills,
           ats_recommendations: analysis.atsRecommendations,
-          ai_summary: analysis.aiSummary
-        })
-        .select()
-        .single()
+          ai_summary: analysis.aiSummary,
+        }
+      const query = Number.isInteger(resumeAnalysisId) && resumeAnalysisId > 0
+        ? supabase.from('resume_analyses').update(resumePayload).eq('id', resumeAnalysisId).eq('profile_id', profile.id)
+        : supabase.from('resume_analyses').insert(resumePayload)
+      const { data: inserted, error: insertError } = await query.select().single()
 
       if (insertError) {
         console.error('Failed to save resume analysis to db:', insertError)
@@ -278,7 +284,7 @@ if (url === '/api/career/analyze' && request.method === 'POST') {
       insertError,
     )
 
-    json(response, 200, {
+    json(response, 502, {
       ...analysis,
       dbError: insertError.message,
     })
@@ -291,23 +297,51 @@ if (url === '/api/career/analyze' && request.method === 'POST') {
 }
 
     if (url === '/api/skill-gap/analyze' && request.method === 'POST') {
-      const body = JSON.parse((await readBody(request, 300 * 1024)).toString()) as { targetRole?: string; requiredSkills?: string[]; preferredSkills?: string[]; resumeAnalysis?: unknown; profileContext?: unknown }
-      if (!body.targetRole || !Array.isArray(body.requiredSkills)) {
+      const body = JSON.parse((await readBody(request, 300 * 1024)).toString()) as { targetRole?: string; requiredSkills?: string[]; preferredSkills?: string[]; resumeAnalysis?: unknown; profileContext?: unknown; force?: boolean }
+      if (!body.targetRole || !Array.isArray(body.requiredSkills) || !body.requiredSkills.every((skill) => typeof skill === 'string') || (body.preferredSkills && (!Array.isArray(body.preferredSkills) || !body.preferredSkills.every((skill) => typeof skill === 'string')))) {
         json(response, 400, { error: 'Target role and role requirements are required.' })
         return
       }
       try {
         const { profile } = await dbService.getUserAndProfile(authHeader)
         const supabase = getSupabaseClient(authHeader)
+        const [goalResult, skillsResult] = await Promise.all([
+          supabase.from('career_goals').select('target_role, goal_description, preferred_location, work_preference').eq('profile_id', profile.id).limit(1).maybeSingle(),
+          supabase.from('user_skills').select('proficiency, skill:skills(name)').eq('profile_id', profile.id),
+        ])
+        if (goalResult.error || skillsResult.error) throw goalResult.error || skillsResult.error
+        const targetRole = goalResult.data?.target_role || body.targetRole
+        if (goalResult.data?.target_role && goalResult.data.target_role !== body.targetRole) {
+          json(response, 409, { error: 'The selected target role does not match your saved career goal. Refresh and try again.' })
+          return
+        }
+        const savedSkills = (skillsResult.data ?? []).flatMap((row) => {
+          const skill = row.skill as unknown as { name?: string } | null
+          return skill?.name ? [{ name: skill.name, proficiency: Number(row.proficiency) || 0 }] : []
+        })
         const { data: analysis } = await supabase.from('resume_analyses').select('detected_skills, missing_skills, strengths, projects, education_experience, certifications, ai_summary').eq('profile_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
-        if (!analysis) { json(response, 400, { error: 'Analyze your resume before running skill-gap analysis.' }); return }
-        const result = await aiService.analyzeSkillGap({ targetRole: body.targetRole, requiredSkills: body.requiredSkills, preferredSkills: body.preferredSkills ?? [], resumeAnalysis: { ...analysis, ...(body.resumeAnalysis && typeof body.resumeAnalysis === 'object' ? body.resumeAnalysis : {}) }, profileContext: body.profileContext ?? {} })
-        const { data: saved, error } = await supabase.from('career_analyses').insert({ profile_id: profile.id, target_role: body.targetRole, career_summary: `Skill-gap analysis for ${body.targetRole}.`, strengths: [], skill_gaps: result.missing_skills, recommended_skills: result.recommended_skills, learning_strategy: result.learning_sequence, recommended_roles: [], interview_preparation: [], skill_gap_analysis: result }).select('id, created_at, skill_gap_analysis').single()
+        const resumeAnalysis = analysis ? {
+          detected_skills: Array.isArray(analysis.detected_skills) ? analysis.detected_skills : [],
+          missing_skills: Array.isArray(analysis.missing_skills) ? analysis.missing_skills : [],
+        } : {}
+        const profileContext = { profile: { name: profile.name, education: profile.education, branch: profile.branch, experience: profile.experience, location: profile.location }, careerGoal: goalResult.data, skills: savedSkills }
+        const sourceHash = createHash('sha256').update(JSON.stringify({ targetRole, requiredSkills: body.requiredSkills, preferredSkills: body.preferredSkills ?? [], resumeAnalysis, profileContext })).digest('hex')
+        const { data: previous } = await supabase.from('career_analyses').select('id, created_at, skill_gap_analysis').eq('profile_id', profile.id).eq('target_role', targetRole).order('created_at', { ascending: false }).limit(20)
+        const cached = (previous ?? []).find((item) => item.skill_gap_analysis && typeof item.skill_gap_analysis === 'object' && (item.skill_gap_analysis as Record<string, unknown>).input_hash === sourceHash)
+        if (!body.force && cached?.skill_gap_analysis && typeof cached.skill_gap_analysis === 'object') {
+          const { input_hash: _inputHash, ...cachedResult } = cached.skill_gap_analysis as Record<string, unknown>
+          json(response, 200, { ...cachedResult, id: cached.id, created_at: cached.created_at, cached: true })
+          return
+        }
+        const result = await aiService.analyzeSkillGap({ targetRole, requiredSkills: body.requiredSkills, preferredSkills: body.preferredSkills ?? [], resumeAnalysis, profileContext })
+        const persistedResult = { ...result, input_hash: sourceHash }
+        const { data: saved, error } = await supabase.from('career_analyses').insert({ profile_id: profile.id, target_role: targetRole, career_summary: `Skill-gap analysis for ${targetRole}.`, strengths: [], skill_gaps: result.missing_skills, recommended_skills: result.recommended_skills, learning_strategy: result.learning_sequence, recommended_roles: [], interview_preparation: [], skill_gap_analysis: persistedResult }).select('id, created_at, skill_gap_analysis').single()
         if (error) throw error
-        json(response, 200, { ...result, id: saved.id, created_at: saved.created_at })
+        json(response, 200, { ...result, id: saved.id, created_at: saved.created_at, cached: false })
       } catch (error) {
         console.error('POST /api/skill-gap/analyze error:', error)
-        json(response, 502, { error: error instanceof Error ? error.message : 'Skill-gap analysis failed. Please try again.' })
+        const providerFailure = error instanceof AIProviderError || /timed out|provider|quota|rate limit|429|too many requests|malformed/i.test(error instanceof Error ? error.message : '')
+        json(response, providerFailure ? 502 : 500, { success: false, error: { code: providerFailure ? 'AI_UNAVAILABLE' : 'SKILL_GAP_ANALYSIS_FAILED', message: providerFailure ? 'AI analysis is temporarily unavailable. Please try again.' : 'Skill-gap analysis failed. Please try again.' } })
       }
       return
     }
@@ -339,12 +373,12 @@ if (url === '/api/career/analyze' && request.method === 'POST') {
           typeof compactContext.experience === 'string' ? compactContext.experience : 'Not specified',
           interviewType,
           compactContext,
-          1,
+          questionCount,
           difficulty
         )
         const questions = generation.questions
         const questionKeys = questions.map((question) => question.question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
-        const questionsAreValid = questions.length === 1
+        const questionsAreValid = questions.length === questionCount
           && questions.every((question) => question.question.trim() && question.topic.trim() && question.difficulty.trim())
           && new Set(questionKeys).size === questions.length
         if (!questionsAreValid) {
@@ -1120,8 +1154,11 @@ if (url === '/api/career/analyze' && request.method === 'POST') {
     json(response, 404, { error: `Not found: ${request.method} ${url}` })
   } catch (error) {
     console.error('Server router handle error:', error)
+    const errorText = error instanceof Error ? error.message : ''
     const status = error instanceof ResumeExtractError
       ? error.status
+      : /AI returned malformed JSON|incomplete analysis|provider/i.test(errorText)
+        ? 503
       : !authHeader || (error instanceof Error && /invalid user session|authorization header|missing authenticated/i.test(error.message))
         ? 401
         : 500

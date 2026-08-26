@@ -53,6 +53,7 @@ export interface InterviewEvaluationResult {
   weaknesses: string[]
   improvements: string[]
   idealAnswerPoints: string[]
+  fallbackUsed?: boolean
 }
 
 export interface GeneratedInterviewQuestion {
@@ -70,7 +71,7 @@ export interface InterviewQuestionGenerationResult {
   providerStatus: AIProviderStatus
   fallbackUsed: boolean
 }
-export type AIProviderName = 'gemini' | 'openai' | 'openrouter' | 'local'
+export type AIProviderName = 'gemini' | 'groq' | 'huggingface' | 'openai' | 'openrouter' | 'local'
 
 export type AIProviderStatus = 'available' | 'rate_limited' | 'temporarily_unavailable' | 'failed' | 'local_fallback'
 
@@ -339,6 +340,8 @@ export const normalizeSkillGapAnalysisResponse = (value: unknown): SkillGapAnaly
       current_level: item.current_level ?? item.currentLevel ?? 0,
       target_level: item.target_level ?? item.targetLevel ?? 0,
       gap_percentage: item.gap_percentage ?? item.gapPercentage ?? 0,
+      priority: item.priority === 'High' || item.priority === 'Low' ? item.priority : 'Medium',
+      reason: typeof item.reason === 'string' && item.reason.trim() ? item.reason : 'This skill is relevant to the target role.',
       recommended_action: item.recommended_action ?? item.recommendedAction ?? '',
       estimated_learning_time: item.estimated_learning_time ?? item.estimatedLearningTime ?? '',
       resources: item.resources ?? item.topics ?? [],
@@ -386,6 +389,7 @@ async function callOpenAI(apiKey: string, systemPrompt: string, userPrompt: stri
       model,
       temperature: 0.2,
       response_format: { type: 'json_object' },
+      max_tokens: 1800,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -413,6 +417,43 @@ async function callOpenAI(apiKey: string, systemPrompt: string, userPrompt: stri
   if (typeof content !== 'string' || !content) throw new Error('OpenAI returned an empty completion response.')
   return content
 }
+
+async function callCompatibleProvider(apiKey: string, systemPrompt: string, userPrompt: string, provider: 'groq' | 'huggingface', endpoint: string, model: string): Promise<string> {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+      max_tokens: 1800,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    const lower = errorText.toLowerCase()
+    if (response.status === 429 || lower.includes('quota') || lower.includes('rate limit')) throw new AIProviderError(`The ${provider} provider is rate limited.`, 'QUOTA_EXHAUSTED', provider, false)
+    if ([500, 502, 503, 504].includes(response.status)) throw new AIProviderError(`The ${provider} provider is temporarily unavailable.`, 'TEMPORARY_UNAVAILABLE', provider, true)
+    if (response.status === 401 || response.status === 403) throw new AIProviderError(`${provider} authentication failed.`, 'AUTHENTICATION_FAILED', provider, false)
+    throw new AIProviderError(`The ${provider} provider request failed.`, 'PROVIDER_FAILED', provider, false)
+  }
+
+  const data = asOpenAIResponse(await response.json())
+  const content = data.choices?.[0]?.message?.content
+  if (typeof content !== 'string' || !content.trim()) throw new AIProviderError(`${provider} returned an empty completion response.`, 'PROVIDER_FAILED', provider, false)
+  return content.trim()
+}
+
+const callGroq = (apiKey: string, systemPrompt: string, userPrompt: string) => callCompatibleProvider(apiKey, systemPrompt, userPrompt, 'groq', 'https://api.groq.com/openai/v1/chat/completions', process.env.GROQ_MODEL || 'llama-3.1-8b-instant')
+const callHuggingFace = (apiKey: string, systemPrompt: string, userPrompt: string) => callCompatibleProvider(apiKey, systemPrompt, userPrompt, 'huggingface', 'https://router.huggingface.co/v1/chat/completions', process.env.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.1-8B-Instruct')
 
 async function callGemini(
   apiKey: string,
@@ -454,6 +495,7 @@ async function callGemini(
 
       generationConfig: {
         responseMimeType: 'application/json',
+        maxOutputTokens: 1800,
       },
     }),
   })
@@ -492,18 +534,34 @@ async function callGemini(
 
 const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
 
+const withTimeout = async <T>(operation: Promise<T>, milliseconds: number): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new AIProviderError('The AI provider timed out.', 'TEMPORARY_UNAVAILABLE', 'provider', true)), milliseconds)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 const callWithRetry = async (providerCall: () => Promise<string>): Promise<string> => {
   let lastError: unknown
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  const maxAttempts = Math.max(1, Number(process.env.AI_MAX_RETRIES || 1) + 1)
+  const timeoutMs = Math.max(1000, Number(process.env.AI_TIMEOUT_MS || process.env.AI_REQUEST_TIMEOUT_MS || 18000))
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      return await providerCall()
+      return await withTimeout(providerCall(), timeoutMs)
     } catch (error) {
       lastError = error
       if (
         !(error instanceof AIProviderError)
         || !error.retryable
         || error.code === 'QUOTA_EXHAUSTED'
-        || attempt === 2
+        || attempt === maxAttempts - 1
       ) throw error
       await wait((1000 * (2 ** attempt)) + Math.floor(Math.random() * 250))
     }
@@ -515,10 +573,15 @@ async function callOpenRouter(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<string> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
   const model = process.env.OPENROUTER_MODEL || 'openrouter/free'
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  let response: Response
+  try {
+    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
+    signal: controller.signal,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
@@ -528,6 +591,7 @@ async function callOpenRouter(
     body: JSON.stringify({
       model,
       temperature: 0.2,
+      response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
@@ -539,10 +603,21 @@ async function callOpenRouter(
         },
       ],
     }),
-  })
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new AIProviderError('The OpenRouter provider timed out.', 'TEMPORARY_UNAVAILABLE', 'openrouter', true)
+    }
+    throw error
+  }
 
   if (!response.ok) {
-  const errorText = await response.text()
+  let errorText: string
+  try {
+    errorText = await response.text()
+  } finally {
+    clearTimeout(timeout)
+  }
   const lowerError = errorText.toLowerCase()
 
   console.error('[OpenRouter] HTTP error:', {
@@ -566,7 +641,17 @@ async function callOpenRouter(
 }
 
 
-  const data = asOpenRouterResponse(await response.json())
+  let data: OpenRouterResponse
+  try {
+    data = asOpenRouterResponse(await response.json())
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new AIProviderError('The OpenRouter provider timed out.', 'TEMPORARY_UNAVAILABLE', 'openrouter', true)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
   console.log('[CareerAI] OpenRouter response received', {
     hasChoices: Array.isArray(data.choices),
     choiceCount: data.choices?.length ?? 0,
@@ -575,8 +660,16 @@ async function callOpenRouter(
 
   const content = data.choices?.[0]?.message?.content
 
+  if (process.env.NODE_ENV !== 'production' && typeof content === 'string') {
+    console.debug('[CareerAI] OpenRouter response preview', content.slice(0, 160))
+  }
+
   if (typeof content !== 'string' || !content.trim()) {
     throw new Error('OpenRouter returned an empty completion response.')
+  }
+
+  if (/user safety|safety refusal|content policy/i.test(content)) {
+    throw new AIProviderError('OpenRouter returned a safety refusal instead of structured output.', 'PROVIDER_FAILED', 'openrouter', false)
   }
 
   return content.trim()
@@ -585,8 +678,11 @@ async function callAI(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<string> {
-  const configuredProvider =
-    (process.env.AI_PROVIDER || 'gemini').toLowerCase()
+  const configuredProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase()
+  const providerOrder = (process.env.AI_PROVIDER_ORDER || configuredProvider)
+    .split(',')
+    .map((provider) => provider.trim().toLowerCase())
+    .filter(Boolean)
 
   const providers: Array<{
     name: AIProviderName
@@ -595,25 +691,23 @@ async function callAI(
   }> = []
 
   const geminiKey = process.env.AI_API_KEY || ''
+  const groqKey = process.env.GROQ_API_KEY || ''
+  const huggingFaceKey = process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN || ''
   const openRouterKey = process.env.OPENROUTER_API_KEY || ''
 
   const openAIKey = process.env.OPENAI_API_KEY || ''
   const addGemini = () => geminiKey && geminiKey !== 'your_key_here' && providers.push({ name: 'gemini', key: geminiKey, call: () => callGemini(geminiKey, systemPrompt, userPrompt) })
+  const addGroq = () => groqKey && groqKey !== 'your_key_here' && providers.push({ name: 'groq', key: groqKey, call: () => callGroq(groqKey, systemPrompt, userPrompt) })
+  const addHuggingFace = () => huggingFaceKey && huggingFaceKey !== 'your_key_here' && providers.push({ name: 'huggingface', key: huggingFaceKey, call: () => callHuggingFace(huggingFaceKey, systemPrompt, userPrompt) })
   const addOpenAI = () => openAIKey && openAIKey !== 'your_key_here' && providers.push({ name: 'openai', key: openAIKey, call: () => callOpenAI(openAIKey, systemPrompt, userPrompt) })
   const addOpenRouter = () => openRouterKey && openRouterKey !== 'your_key_here' && providers.push({ name: 'openrouter', key: openRouterKey, call: () => callOpenRouter(openRouterKey, systemPrompt, userPrompt) })
 
-  if (configuredProvider === 'openrouter') {
-    addOpenRouter()
-    addGemini()
-    addOpenAI()
-  } else if (configuredProvider === 'openai') {
-    addOpenAI()
-    addOpenRouter()
-    addGemini()
-  } else {
-    addGemini()
-    addOpenRouter()
-    addOpenAI()
+  for (const provider of providerOrder) {
+    if (provider === 'gemini') addGemini()
+    if (provider === 'groq') addGroq()
+    if (provider === 'huggingface' || provider === 'hf') addHuggingFace()
+    if (provider === 'openrouter') addOpenRouter()
+    if (provider === 'openai') addOpenAI()
   }
 
   if (!providers.length) {
@@ -747,6 +841,26 @@ const localInterviewQuestions = (role: string, type: string, difficulty: string,
   return combined.slice(0, count).map((question) => ({ ...question, difficulty, adaptiveReason: question.adaptiveReason ?? 'Personalized fallback question.', basedOnPreviousScore: question.basedOnPreviousScore ?? false }))
 }
 
+const localInterviewEvaluation = (question: string, answer: string): InterviewEvaluationResult => {
+  const wordCount = answer.trim().split(/\s+/).filter(Boolean).length
+  const hasSubstance = wordCount >= 20
+  const score = Math.min(75, Math.max(25, 25 + Math.min(wordCount, 50)))
+  return {
+    score,
+    technicalAccuracy: score,
+    conceptUnderstanding: score,
+    problemSolving: score,
+    communication: hasSubstance ? 70 : 45,
+    completeness: hasSubstance ? 65 : 35,
+    confidence: hasSubstance ? 65 : 45,
+    strengths: hasSubstance ? ['The answer provides enough detail to review.'] : ['The answer addresses the question.'],
+    weaknesses: hasSubstance ? ['Technical claims require deeper validation.'] : ['The answer needs more specific reasoning and examples.'],
+    improvements: ['Explain the approach step by step.', 'Include a concrete example or trade-off.'],
+    idealAnswerPoints: [`Address the key concepts in: ${question.slice(0, 120)}`],
+    fallbackUsed: true,
+  }
+}
+
 export const aiService = {
   async analyzeSkillGap(input: { targetRole: string; requiredSkills: string[]; preferredSkills: string[]; resumeAnalysis: unknown; profileContext: unknown }): Promise<SkillGapAnalysisResult> {
     const systemPrompt = `You are an evidence-based career skills analyst. Compare the candidate resume analysis with the target role requirements. Use only skills and evidence present in the supplied resume analysis or profile context; do not invent candidate skills, experience, projects, or certifications. Return JSON only matching the requested schema. Estimate levels as integers 0-100. Categorize every skill as Programming, Frontend, Backend, Database, Cloud/DevOps, AI/ML, Data, Tools, Soft Skills, or Other. Missing skills may be role requirements absent from the resume, but must explain why they matter. Keep arrays valid, using [] when empty.`
@@ -829,8 +943,13 @@ Return only the requested JSON structure.
 `
 
     try {
-      const responseText = await callAI(systemPrompt, userPrompt)
-      return ResumeAnalysisResultSchema.parse(parseJsonResponse(responseText))
+      let responseText = await callAI(systemPrompt, userPrompt)
+      try {
+        return ResumeAnalysisResultSchema.parse(parseJsonResponse(responseText))
+      } catch {
+        responseText = await callAI(systemPrompt, `${userPrompt}\nReturn only the JSON object. Repair any formatting and do not include markdown or commentary.`)
+        return ResumeAnalysisResultSchema.parse(parseJsonResponse(responseText))
+      }
    } catch (error) {
   console.error('aiService.analyzeResume error:', error)
 
@@ -951,8 +1070,15 @@ RESUME AI ANALYSIS:
 ${JSON.stringify(resumeAnalysis || null)}
 `
     try {
-      const responseText = await callAI(systemPrompt, userPrompt)
-      const parsed = parseJsonResponse(responseText) as Partial<CareerAnalysisResult>
+      let responseText = await callAI(systemPrompt, userPrompt)
+      let parsed: Partial<CareerAnalysisResult>
+      try {
+        parsed = parseJsonResponse(responseText) as Partial<CareerAnalysisResult>
+      } catch (error) {
+        if (!responseText.toLowerCase().includes('user safety')) throw error
+        responseText = await callAI(systemPrompt, `${userPrompt}\nReturn only the JSON object. Do not include safety labels, commentary, markdown, or prose.`)
+        parsed = parseJsonResponse(responseText) as Partial<CareerAnalysisResult>
+      }
 
       return {
         career_summary: parsed.career_summary || 'Summary generated.',
@@ -1221,7 +1347,8 @@ Please evaluate this answer and provide detailed feedback.
       return InterviewEvaluationResultSchema.parse(parseJsonResponse(responseText))
     } catch (error) {
       console.error('aiService.evaluateInterviewAnswer error:', error)
-      throw new Error('AI answer evaluation failed. No score was generated.', { cause: error })
+      console.warn('[Interview AI] Using deterministic answer evaluation fallback')
+      return localInterviewEvaluation(question, answer)
     }
   },
 

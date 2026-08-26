@@ -214,8 +214,8 @@ export function CareerAnalysisPage() {
   const roleChangedMessage = targetRole && latestCareerAnalysis && latestCareerAnalysis.target_role !== targetRole ? `Your target role changed to ${targetRole}. Generate a new AI Career Analysis.` : ''
 
   if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" aria-label="Loading career data" /></div>
-  if (errorMessage && !data) return <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{errorMessage}</div>
-  if (!data) return <div role="status" className="rounded-2xl border border-border bg-white p-6 text-sm text-muted-foreground">Career data is not available yet.</div>
+  if (errorMessage && !data) return <div role="alert" className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-300">{errorMessage}</div>
+  if (!data) return <div role="status" className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Career data is not available yet.</div>
 
   return <div className="space-y-6">
     <PageHeader title="AI Career Analysis" description={targetRole ? `Generate a structured analysis for your ${targetRole} path.` : 'Complete your career goal before generating an analysis.'} eyebrow={<Badge variant="outline" className="border-primary/20 text-primary"><Sparkles className="h-3.5 w-3.5" /> Secure AI analysis</Badge>} actions={<div className="flex gap-2"><Button onClick={generateAnalysis} disabled={generating || !targetRole}>{generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {analysis ? 'Regenerate Analysis' : 'Generate AI Analysis'}</Button><Button asChild variant="outline"><Link to="/skills">View skill gaps <ArrowRight className="h-4 w-4" /></Link></Button></div>} />

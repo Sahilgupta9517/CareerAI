@@ -749,8 +749,8 @@ export function InterviewPageEnhanced({ setupOverride, onComplete, initialInterv
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container max-w-4xl mx-auto px-4">
+    <div className="min-h-full bg-transparent py-2 sm:py-4">
+      <div className="container mx-auto w-full max-w-6xl px-0">
         <PageHeader
           title={screen === 'setup' ? 'AI Mock Interviews' : screen === 'session' ? 'Interview Session' : 'Interview Report'}
           description={

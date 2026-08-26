@@ -22,7 +22,7 @@ export function ResumeUpload({ state, fileName, onUpload, onReset }: ResumeUploa
 
   if (state !== 'idle') {
     return (
-      <div className="rounded-2xl border border-border bg-white p-6 shadow-soft">
+      <div className="rounded-xl border border-border bg-card/90 p-6 shadow-soft backdrop-blur-sm">
         <div className="flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-soft text-primary">
             <FileText className="h-6 w-6" />
@@ -78,7 +78,7 @@ if (dropped) {
 }
       }}
       className={cn(
-        'flex flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white px-6 py-14 text-center shadow-soft transition-all duration-300',
+        'flex flex-col items-center justify-center rounded-xl border-2 border-dashed bg-card/70 px-6 py-14 text-center shadow-soft transition-all duration-300 backdrop-blur-sm',
         dragging ? 'border-primary bg-primary/5 scale-[1.01]' : 'border-border hover:border-primary/40',
       )}
     >

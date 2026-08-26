@@ -256,13 +256,13 @@ export function JobsPage() {
       </Card>
 
       {skillError ? (
-        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+        <div role="alert" className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-300">
           {skillError}
         </div>
       ) : null}
 
-      {analysisNotice ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{analysisNotice}</div> : null}
-      {applicationNotice ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{applicationNotice}</div> : null}
+      {analysisNotice ? <div role="status" className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-300">{analysisNotice}</div> : null}
+      {applicationNotice ? <div role="status" className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-300">{applicationNotice}</div> : null}
 
       {!skillsLoading && !skillError && !targetRole ? (
         <Card className="p-8 text-center">

@@ -5,7 +5,6 @@ import { LandingPage } from '@/pages/LandingPage'
 import { AuthPage } from '@/pages/AuthPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { DashboardPage } from '@/pages/DashboardPage'
-import { ResumePage } from '@/pages/ResumePage'
 import { ResumeAnalyzerPage } from '@/pages/ResumeAnalyzerPage'
 import { SkillGapPage } from '@/pages/SkillGapPage'
 import { RoadmapPage } from '@/pages/RoadmapPage'
@@ -44,7 +43,7 @@ export default function App() {
       <Route element={<ProtectedRoutes />}>
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/resume" element={<ResumePage />} />
+        <Route path="/resume" element={<ResumeAnalyzerPage />} />
         <Route path="/resume-analyzer" element={<ResumeAnalyzerPage />} />
         <Route path="/skills" element={<SkillGapPage />} />
         <Route path="/career-analysis" element={<CareerAnalysisPage />} />

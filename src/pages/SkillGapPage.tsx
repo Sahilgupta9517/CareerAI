@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowRight, Check, CircleAlert, CircleDot, GraduationCap, Target, Upload } from 'lucide-react'
+import { ArrowRight, Check, CircleAlert, CircleDot, GraduationCap, Loader2, Target } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import { ProgressRing } from '@/components/common/ProgressRing'
 import { supabase } from '@/lib/supabase'
 import { roleRequirements } from '@/data/roleRequirements'
 import { compareRoleSkills, calculateRoleReadiness } from '@/lib/skillMatching'
+import { runSkillGapAnalysis } from '@/lib/skillGapService'
 import { normalizeSkill } from '@/lib/jobMatching'
 import { sanitizeSkillList } from '@/lib/resumeParser'
 import type { ResumeEducation } from '@/lib/resumeParser'
@@ -49,6 +50,9 @@ export function SkillGapPage() {
   const [resumeAnalyzed, setResumeAnalyzed] = useState(false)
   const [filter, setFilter] = useState<Filter>('all')
   const [aiAnalysis, setAiAnalysis] = useState<SkillGapAnalysis | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const [aiCached, setAiCached] = useState(false)
 
   const saveTargetRole = async (nextRole: string) => {
     const normalizedRole = nextRole.trim()
@@ -120,7 +124,10 @@ export function SkillGapPage() {
         if (role) {
           const savedAnalysis = await supabase.from('career_analyses').select('skill_gap_analysis').eq('profile_id', profile.id).eq('target_role', role).not('skill_gap_analysis', 'eq', '{}').order('created_at', { ascending: false }).limit(1).maybeSingle()
           if (savedAnalysis.error) throw savedAnalysis.error
-          if (savedAnalysis.data?.skill_gap_analysis && typeof savedAnalysis.data.skill_gap_analysis === 'object') setAiAnalysis(savedAnalysis.data.skill_gap_analysis as SkillGapAnalysis)
+          if (savedAnalysis.data?.skill_gap_analysis && typeof savedAnalysis.data.skill_gap_analysis === 'object') {
+            setAiAnalysis(savedAnalysis.data.skill_gap_analysis as SkillGapAnalysis)
+            setAiCached(true)
+          }
         }
       } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'We could not load your skill data.')
       } finally { setLoading(false) }
@@ -134,16 +141,39 @@ export function SkillGapPage() {
   const filtered = comparisons.filter((item) => filter === 'all' || (filter === 'matched' ? item.classification === 'MATCHED' : filter === 'partial' ? item.classification === 'PARTIAL' : item.classification === 'MISSING'))
   const nextSkills = [...comparisons].filter((item) => item.classification !== 'MATCHED').sort((left, right) => priorityValue(right) - priorityValue(left) || right.weight - left.weight).slice(0, 3)
 
+  const runAi = async (force = false) => {
+    if (!role || aiLoading) return
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const result = await runSkillGapAnalysis({
+        targetRole: role.title,
+        requiredSkills: role.requiredSkills,
+        preferredSkills: role.preferredSkills,
+        resumeAnalysis: { detected_skills: userSkills.map((skill) => skill.name) },
+        profileContext: { skills: userSkills },
+        force,
+      })
+      setAiAnalysis(result)
+      setAiCached(false)
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'AI skill-gap analysis failed. Please try again.')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   if (loading) return <div className="space-y-5"><Skeleton className="h-16 w-full" /><div className="grid gap-4 sm:grid-cols-3"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div><Skeleton className="h-80 w-full" /></div>
-  if (errorMessage) return <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{errorMessage}</div>
+  if (errorMessage) return <div role="alert" className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-300">{errorMessage}</div>
 
   return <div className="space-y-6">
     <PageHeader title="Skill Gap Analysis" description="A deterministic comparison of your current skills against the requirements for your target role." eyebrow={<Badge variant="outline" className="border-primary/20 text-primary"><Target className="h-3.5 w-3.5" /> Role readiness</Badge>} actions={<Button asChild><Link to="/roadmap">Build My Roadmap <ArrowRight className="h-4 w-4" /></Link></Button>} />
     <Card className="p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Career goal</p><p className="mt-1 text-lg font-semibold">{savedRole || 'No target role set'}</p><p className="mt-1 text-xs text-muted-foreground">Choose a supported role to calculate your gap.</p></div><Select className="sm:max-w-xs" value={selectedRole} onChange={(event) => { void saveTargetRole(event.target.value) }} aria-label="Target role" disabled={savingRole}><option value="">Choose a target role</option>{roleRequirements.map((item) => <option key={item.id} value={item.title}>{item.title}</option>)}</Select></div></Card>
     {!selectedRole ? <EmptyState icon={<Target className="h-8 w-8" />} title="Set a target role to calculate your skill gap." action="Choose a role above or update your profile." /> : null}
-    {selectedRole && !resumeAnalyzed ? <Card className="border-amber-200 bg-amber-50/60 p-7 text-center"><Upload className="mx-auto h-8 w-8 text-amber-700" /><h2 className="mt-3 text-base font-semibold">Analyze your resume to unlock personalized skill-gap analysis.</h2><p className="mt-1 text-sm text-muted-foreground">Your saved skills will remain available, but resume-based evidence is not available yet.</p><Button asChild className="mt-5"><Link to="/resume-analyzer">Analyze Resume</Link></Button></Card> : null}
-    {role && resumeAnalyzed ? <>
-      <Card className="border-amber-200/80 bg-amber-50/60 p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">AI analysis paused</p><p className="mt-1 text-sm text-amber-900/75">Deterministic skill comparison remains available below.</p></div><Badge variant="outline" className="w-fit border-amber-300 text-amber-800">Temporarily unavailable</Badge></div></Card>
+    {selectedRole && !resumeAnalyzed ? <Card className="border-sky-200 bg-sky-50/60 p-5"><p className="text-sm text-sky-900">Resume evidence is not available yet. Your deterministic comparison below uses saved profile skills.</p><Button asChild variant="outline" className="mt-4"><Link to="/resume-analyzer">Analyze Resume</Link></Button></Card> : null}
+    {role ? <>
+      {resumeAnalyzed ? <Card className="border-amber-200/80 bg-amber-50/60 p-5"><p className="text-sm text-amber-900/75">Resume evidence is included in this AI Skill Gap Analysis.</p></Card> : null}
+      <Card className="border-primary/15 bg-card p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-wider text-primary">AI Skill Gap Analysis</p><p className="mt-1 text-sm text-muted-foreground">Get personalized explanations, priorities and a learning strategy based on your current skills and target career.</p>{aiCached ? <p className="mt-2 text-xs text-emerald-700">Loaded from your saved analysis.</p> : null}</div><Button onClick={() => void runAi(Boolean(aiAnalysis))} disabled={aiLoading}>{aiLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing...</> : aiAnalysis ? 'Regenerate AI Analysis' : 'Run AI Analysis'}</Button></div>{aiError ? <div role="alert" className="mt-4 flex flex-col gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"><span>{aiError}</span><Button size="sm" variant="outline" onClick={() => void runAi()} disabled={aiLoading}>Retry</Button></div> : null}</Card>
       {aiAnalysis ? <AiSkillGapDashboard analysis={aiAnalysis} /> : null}
       <Card className="border-primary/15 bg-brand-soft p-5"><div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Overall readiness</p><h2 className="mt-1 text-2xl font-bold">{role.title}</h2><p className="mt-1 text-sm text-muted-foreground">Matched skills count fully; partial skills count at 50%.</p></div><div className="flex items-center gap-4"><ProgressRing value={readiness} size={94} label={`${readiness}%`} /><div className="text-sm"><p className="font-semibold">{comparisons.filter((item) => item.classification === 'MATCHED').length} matched</p><p className="text-muted-foreground">of {role.requiredSkills.length} required skills</p></div></div></div></Card>
       <div className="grid gap-4 sm:grid-cols-3"><SummaryCard label="Skills You Have" value={comparisons.filter((item) => item.classification === 'MATCHED').length} tone="success" /><SummaryCard label="Needs Improvement" value={comparisons.filter((item) => item.classification === 'PARTIAL').length} tone="warning" /><SummaryCard label="Missing Skills" value={comparisons.filter((item) => item.classification === 'MISSING').length} tone="danger" /></div>

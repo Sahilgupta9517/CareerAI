@@ -6,14 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
-import { PageHeader } from '@/components/common/PageHeader'
 import { ProfileAvatar } from '@/components/common/ProfileAvatar'
 import { ProgressRing } from '@/components/common/ProgressRing'
 import { getDashboardOverview, type DashboardOverview } from '@/lib/dashboardService'
 import { calculateProfileStrength } from '@/lib/profileService'
 import { cn } from '@/lib/utils'
 
-const greeting = () => { const hour = new Date().getHours(); return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening' }
 const score = (value: number | null | undefined, suffix = '%') => value === null || value === undefined ? 'Not available' : `${value}${suffix}`
 
 export function DashboardPage() {

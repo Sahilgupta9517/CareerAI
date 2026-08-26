@@ -197,8 +197,8 @@ const sectionData = analysis
             <Card className="p-6">
               <h2 className="text-base font-semibold">Resume Strengths</h2>
               <ul className="mt-4 space-y-3">{analysis?.strengths.map((item: string) => (
-                  <li key={item} className="flex items-start gap-3 rounded-xl bg-emerald-50/60 px-4 py-3">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <li key={item} className="flex items-start gap-3 rounded-xl border border-emerald-500/15 bg-emerald-500/10 px-4 py-3">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                     <span className="text-sm text-foreground/80">{item}</span>
                   </li>
                 ))}
@@ -209,8 +209,8 @@ const sectionData = analysis
               <h2 className="text-base font-semibold">Areas to Improve</h2>
               <ul className="mt-4 space-y-3">
                 {analysis?.improvements.map((item: string) => (
-                  <li key={item} className="flex items-start gap-3 rounded-xl bg-amber-50/70 px-4 py-3">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <li key={item} className="flex items-start gap-3 rounded-xl border border-amber-500/15 bg-amber-500/10 px-4 py-3">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
                     <span className="text-sm text-foreground/80">{item}</span>
                   </li>
                 ))}

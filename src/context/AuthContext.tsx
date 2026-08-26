@@ -26,17 +26,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) {
-        setSession(data.session)
-        setLoading(false)
-      }
-    }).catch(() => {
-      if (mounted) setLoading(false)
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return
+      setSession(nextSession)
+      setLoading(false)
     })
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession)
+    supabase.auth.getSession().then(({ data: sessionData, error }) => {
+      if (!mounted) return
+      if (error && import.meta.env.DEV) console.error('Supabase session restore failed:', error.message)
+      setSession(sessionData.session)
+      setLoading(false)
+    }).catch((error: unknown) => {
+      if (!mounted) return
+      if (import.meta.env.DEV) console.error('Supabase session restore failed:', error)
+      setSession(null)
       setLoading(false)
     })
 

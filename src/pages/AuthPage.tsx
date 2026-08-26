@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRight, Check, Eye, EyeOff, Loader2, Lock, Mail, Phone, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,16 @@ interface AuthPageProps {
   mode: 'login' | 'signup'
 }
 
+function authErrorMessage(error: { message?: string; status?: number; code?: string } | null) {
+  if (!error) return 'Something went wrong. Please try again.'
+  const message = error.message?.toLowerCase() ?? ''
+  if (message.includes('invalid login credentials') || error.code === 'invalid_credentials') return 'Email or password is incorrect.'
+  if (message.includes('email not confirmed')) return 'Please verify your email before signing in.'
+  if (error.status === 429 || message.includes('rate limit')) return 'Too many attempts. Please wait a moment and try again.'
+  if (message.includes('failed to fetch') || message.includes('network') || message.includes('connection')) return 'Unable to connect to the authentication server.'
+  return 'We could not complete authentication. Please try again.'
+}
+
 const highlights = [
   'AI-powered career analysis',
   'Personalized skill-gap insights',
@@ -22,6 +32,7 @@ const highlights = [
 
 export function AuthPage({ mode }: AuthPageProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { toast } = useToast()
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -29,6 +40,7 @@ export function AuthPage({ mode }: AuthPageProps) {
   const [errorMessage, setErrorMessage] = useState('')
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' })
   const isSignup = mode === 'signup'
+  const redirectPath = typeof location.state?.from?.pathname === 'string' && location.state.from.pathname !== '/login' ? location.state.from.pathname : '/dashboard'
 
   useEffect(() => {
     setForm({ name: '', email: '', phone: '', password: '', confirmPassword: '' })
@@ -85,7 +97,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         }
         if (!data.user) throw new Error('We could not create your account. Please try again.')
 
-        const profileResponse = await supabase.from('profiles').insert({ user_id: data.user.id })
+        const profileResponse = await supabase.from('profiles').upsert({ user_id: data.user.id }, { onConflict: 'user_id', ignoreDuplicates: true })
         if (import.meta.env.DEV) {
           console.log('Profile INSERT response:', {
             data: profileResponse.data,
@@ -117,10 +129,10 @@ export function AuthPage({ mode }: AuthPageProps) {
         const { error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
         if (error) throw error
         toast({ title: 'Welcome back', description: 'Your career dashboard is ready.', tone: 'success' })
-        navigate('/dashboard')
+        navigate(redirectPath)
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Something went wrong. Please try again.')
+      setErrorMessage(authErrorMessage(error as { message?: string; status?: number; code?: string }))
     } finally {
       setSubmitting(false)
     }
@@ -149,21 +161,21 @@ export function AuthPage({ mode }: AuthPageProps) {
   }
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="relative hidden overflow-hidden bg-brand-gradient p-12 text-white lg:flex lg:flex-col lg:justify-between">
+    <div className="grid min-h-screen bg-background lg:grid-cols-[1.05fr_.95fr]">
+      <div className="relative hidden overflow-hidden border-r border-border/70 bg-surface-gradient p-10 text-white lg:flex lg:flex-col lg:justify-between xl:p-14">
         <div className="pointer-events-none absolute inset-0 opacity-25 grid-bg" />
         <div className="pointer-events-none absolute -bottom-24 -left-16 h-80 w-80 rounded-full bg-white/10 blur-3xl" />
         <Link to="/landing" className="relative"><Logo light tagline /></Link>
 
         <div className="relative max-w-md">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/65">AI-Powered Career Intelligence</p>
-          <h2 className="mt-4 text-4xl font-bold leading-tight">Turn ambition into your next best move.</h2>
+          <h2 className="mt-4 max-w-xl text-4xl font-bold leading-[1.08] xl:text-5xl">Turn ambition into your <span className="text-gradient">next best move.</span></h2>
           <p className="mt-4 max-w-lg text-base leading-7 text-white/80">
             Connect your resume, skills and goals in one focused workspace built to help you move toward the right opportunity.
           </p>
           <div className="mt-10 grid gap-3 sm:grid-cols-2">
             {highlights.map((item) => (
-              <div key={item} className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
+              <div key={item} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 backdrop-blur-sm">
                 <Check className="h-4 w-4 shrink-0 text-cyan-200" />
                 <p className="text-sm text-white/90">{item}</p>
               </div>
@@ -174,8 +186,8 @@ export function AuthPage({ mode }: AuthPageProps) {
         <p className="relative text-sm text-white/70">A focused workspace for your next career move.</p>
       </div>
 
-      <div className="flex items-center justify-center px-4 py-12 sm:px-8">
-        <div className="w-full max-w-md animate-fade-up">
+      <div className="flex items-center justify-center px-4 py-12 sm:px-8 lg:bg-background lg:px-12">
+        <div className="w-full max-w-md animate-fade-up rounded-2xl border border-border/70 bg-card/70 p-6 shadow-lift backdrop-blur-sm sm:p-8">
           <div className="mb-8 lg:hidden">
             <Link to="/landing">
               <Logo />
@@ -308,18 +320,19 @@ export function AuthPage({ mode }: AuthPageProps) {
             </p>
           ) : null}
 
-          <div className="my-6 flex items-center gap-4">
-            <span className="h-px flex-1 bg-border" />
-            <span className="text-xs uppercase tracking-wider text-muted-foreground">or</span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
+          {import.meta.env.VITE_SUPABASE_GOOGLE_ENABLED === 'true' ? <>
+            <div className="my-6 flex items-center gap-4">
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-xs uppercase tracking-wider text-muted-foreground">or</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
 
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full"
-            disabled={submitting}
-            onClick={async () => {
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full"
+              disabled={submitting}
+              onClick={async () => {
               setErrorMessage('')
               if (!isSupabaseConfigured) {
                 setErrorMessage('Supabase is not configured. Add the required environment variables to .env.')
@@ -331,12 +344,12 @@ export function AuthPage({ mode }: AuthPageProps) {
                 options: { redirectTo: `${window.location.origin}/dashboard` },
               })
               if (error) {
-                setErrorMessage(error.message)
+                setErrorMessage(authErrorMessage(error))
                 setSubmitting(false)
               }
-            }}
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+              }}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
               <path
                 fill="#4285F4"
                 d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.7v3h3.9c2.3-2.1 3.5-5.2 3.5-8.9z"
@@ -350,9 +363,10 @@ export function AuthPage({ mode }: AuthPageProps) {
                 fill="#EA4335"
                 d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.2 6.6l4 3.1c1-2.9 3.7-4.9 6.8-4.9z"
               />
-            </svg>
-            Continue with Google
-          </Button>
+              </svg>
+              Continue with Google
+            </Button>
+          </> : null}
 
           <p className="mt-8 text-center text-sm text-muted-foreground">
             {isSignup ? 'Already have an account? ' : "Don't have an account? "}

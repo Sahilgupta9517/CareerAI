@@ -13,7 +13,7 @@ export function FeatureCard({ icon: Icon, title, description, tone = 'from-indig
   return (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-2xl border border-border/80 bg-white p-6 shadow-soft transition-all duration-300 hover:-translate-y-1.5 hover:border-primary/25 hover:shadow-glow',
+        'group relative overflow-hidden rounded-xl border border-border/80 bg-card/90 p-6 shadow-soft transition-all duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-glow backdrop-blur-sm',
         className,
       )}
     >

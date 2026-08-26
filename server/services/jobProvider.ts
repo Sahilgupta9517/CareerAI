@@ -153,7 +153,7 @@ export class RestJobProvider implements JobProvider {
 export const createConfiguredJobProvider = (): JobProvider | null => {
   const provider = (process.env.JOB_PROVIDER || '').toLowerCase()
   const endpoint = text(process.env.JOB_PROVIDER_URL)
-  if (!provider || provider === 'demo' || !endpoint) return null
+  if (!provider || provider === 'demo' || !endpoint || /your[-_]legitimate[-_]job[-_]api|your[-_].*example|example\.com/i.test(endpoint)) return null
   const url = validUrl(endpoint)
   if (!url) throw new JobProviderError('invalid_response', 'JOB_PROVIDER_URL must be an HTTPS URL.')
   return new RestJobProvider(url, process.env.JOB_PROVIDER_API_KEY || '', Number(process.env.JOB_PROVIDER_TIMEOUT_MS) || 8000)
